@@ -1,0 +1,32 @@
+nemo-speech-python
+Copyright 2026 The nemo-speech-python contributors
+
+Licensed under the Apache License, Version 2.0 (see LICENSE).
+
+Unofficial Python bindings for NeMo-Speech.cpp. This project is not affiliated
+with, sponsored by, or endorsed by NVIDIA Corporation. "NVIDIA" and "NeMo" are
+trademarks of NVIDIA Corporation.
+
+Portions of this project are adapted from NeMo-Speech.cpp
+(https://github.com/NVIDIA/NeMo-Speech.cpp),
+Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES, licensed under the
+Apache License, Version 2.0:
+
+  - cmake/materialize_llama_cpp.cmake: llama.cpp patch application, adapted
+    from cmake/llama_cpp.cmake.
+  - nemo_speech/models.py: model catalog, cache layout and ranged tokenizer
+    download, ported from app/model_store.cpp.
+  - nemo_speech/capi/*.py: ctypes declarations mirroring include/nemo_speech/*.h.
+
+patches/llama.cpp/ contains modifications to llama.cpp
+(https://github.com/ggml-org/llama.cpp), Copyright (c) 2023-2026 The ggml
+authors, licensed under the MIT License.
+
+Binary distributions (wheels) bundle NeMo-Speech.cpp, ggml/llama.cpp,
+SentencePiece and, depending on the platform, compiler runtime libraries.
+Their license texts and notices are included in the package under
+nemo_speech/licenses/.
+
+Models are not distributed with this project. nemo_speech.models downloads
+them on request from their publishers; they are governed by their own licenses,
+which you are responsible for reviewing and complying with.

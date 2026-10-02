@@ -1,0 +1,90 @@
+name: wheels
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  sdist:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+      - name: Check out the submodules the build needs
+        run: |
+          git submodule update --init vendor/NeMo-Speech.cpp vendor/sentencepiece
+          git -C vendor/NeMo-Speech.cpp submodule update --init --depth 1 llama.cpp
+      - name: Build sdist
+        run: pipx run build --sdist
+      - uses: actions/upload-artifact@v7
+        with:
+          name: sdist
+          path: dist/*.tar.gz
+
+  # CPU wheels, built from the sdist so a file missing from it fails here.
+  wheels:
+    needs: sdist
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, ubuntu-24.04-arm, windows-2022, macos-14]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          name: sdist
+          path: sdist
+      - name: Locate sdist
+        shell: bash
+        run: echo "SDIST=$(ls sdist/*.tar.gz)" >> "$GITHUB_ENV"
+      - uses: pypa/cibuildwheel@v4.2.1
+        with:
+          package-dir: ${{ env.SDIST }}
+          output-dir: wheelhouse
+      - uses: actions/upload-artifact@v7
+        with:
+          name: wheels-cpu-${{ matrix.os }}
+          path: wheelhouse/*.whl
+
+  # Vulkan variant for Windows. Same distribution name as the CPU wheel, so it
+  # belongs on a separate index (as llama-cpp-python does for GPU builds).
+  wheels-vulkan-windows:
+    needs: sdist
+    runs-on: windows-2022
+    env:
+      VULKAN_SDK_VERSION: "1.4.341.1"
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          name: sdist
+          path: sdist
+      - name: Install the Vulkan SDK (glslc and the loader)
+        shell: pwsh
+        run: |
+          $installer = "$env:RUNNER_TEMP\vulkan-sdk.exe"
+          Invoke-WebRequest "https://sdk.lunarg.com/sdk/download/$env:VULKAN_SDK_VERSION/windows/vulkansdk-windows-X64-$env:VULKAN_SDK_VERSION.exe" -OutFile $installer
+          & $installer --root "C:\VulkanSDK\$env:VULKAN_SDK_VERSION" --accept-licenses --default-answer --confirm-command install
+          "VULKAN_SDK=C:\VulkanSDK\$env:VULKAN_SDK_VERSION" | Out-File -Append $env:GITHUB_ENV
+          "C:\VulkanSDK\$env:VULKAN_SDK_VERSION\Bin" | Out-File -Append $env:GITHUB_PATH
+      - name: Locate sdist
+        shell: bash
+        run: echo "SDIST=$(ls sdist/*.tar.gz)" >> "$GITHUB_ENV"
+      - uses: pypa/cibuildwheel@v4.2.1
+        with:
+          package-dir: ${{ env.SDIST }}
+          output-dir: wheelhouse
+        env:
+          CIBW_ENVIRONMENT_WINDOWS: CMAKE_ARGS="-DGGML_VULKAN=ON"
+          # vulkan-1.dll comes from the GPU driver; never bundle the loader.
+          CIBW_REPAIR_WHEEL_COMMAND_WINDOWS: >-
+            delvewheel repair --analyze-existing --ignore-existing --exclude vulkan-1.dll -w {dest_dir} {wheel}
+      - uses: actions/upload-artifact@v7
+        with:
+          name: wheels-vulkan-windows
+          path: wheelhouse/*.whl

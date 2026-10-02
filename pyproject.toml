@@ -1,0 +1,97 @@
+[build-system]
+requires = ["scikit-build-core>=0.10"]
+build-backend = "scikit_build_core.build"
+
+[project]
+name = "nemo-speech"
+dynamic = ["version"]
+description = "Unofficial Python bindings for NeMo-Speech.cpp (ctypes over the stable C ABI)"
+readme = "README.md"
+license = "Apache-2.0"
+license-files = ["LICENSE", "NOTICE"]
+requires-python = ">=3.9"
+dependencies = ["numpy>=1.21"]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Programming Language :: C++",
+    "Topic :: Multimedia :: Sound/Audio :: Speech",
+]
+
+[project.optional-dependencies]
+test = ["pytest>=7"]
+
+[project.urls]
+Homepage = "https://github.com/PNL-toshiyaishihara/nemo-speech-python"
+Issues = "https://github.com/PNL-toshiyaishihara/nemo-speech-python/issues"
+Upstream = "https://github.com/NVIDIA/NeMo-Speech.cpp"
+
+[tool.scikit-build]
+minimum-version = "0.10"
+cmake.version = ">=3.26"
+cmake.build-type = "Release"
+# Persistent build tree so rebuilds are incremental.
+build-dir = "build/{wheel_tag}"
+wheel.packages = ["nemo_speech"]
+# The bindings use ctypes, not the CPython C API: one wheel per platform
+# serves every Python 3 version.
+wheel.py-api = "py3"
+# Keep the sdist to what the build needs: llama.cpp's sample models, docs and
+# tools, and SentencePiece's training data and Python package, are unused.
+sdist.exclude = [
+    "build/",
+    "dist/",
+    "wheelhouse/",
+    ".venv/",
+    "vendor/NeMo-Speech.cpp/llama.cpp/models/",
+    "vendor/NeMo-Speech.cpp/llama.cpp/docs/",
+    "vendor/NeMo-Speech.cpp/llama.cpp/media/",
+    "vendor/NeMo-Speech.cpp/llama.cpp/benches/",
+    "vendor/NeMo-Speech.cpp/llama.cpp/examples/",
+    "vendor/NeMo-Speech.cpp/llama.cpp/tools/",
+    "vendor/NeMo-Speech.cpp/llama.cpp/tests/",
+    "vendor/sentencepiece/data/",
+    "vendor/sentencepiece/python/",
+]
+# Upstream's patch series also edits this tool, so it must stay applicable.
+sdist.include = ["vendor/NeMo-Speech.cpp/llama.cpp/tools/quantize/"]
+
+[tool.scikit-build.metadata.version]
+provider = "scikit_build_core.metadata.regex"
+input = "nemo_speech/__init__.py"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.cibuildwheel]
+# The wheel is py3-none-<platform>, so one build per platform serves every
+# Python 3; cibuildwheel tests it with the interpreter it was built with.
+build = "cp312-*"
+skip = "*-musllinux_* *_i686 *-win32"
+build-verbosity = 1
+test-requires = ["pytest"]
+# Model-backed tests skip themselves on CI (no models are downloaded).
+test-command = "pytest {project}/tests -p no:cacheprovider"
+
+[tool.cibuildwheel.linux]
+archs = ["auto64"]
+manylinux-x86_64-image = "manylinux_2_28"
+manylinux-aarch64-image = "manylinux_2_28"
+# The project is copied in as another user; let git read the submodules.
+before-all = "git config --global --add safe.directory '*'"
+# auditwheel grafts libgomp and retags the wheel manylinux_2_28.
+repair-wheel-command = "auditwheel repair -w {dest_dir} {wheel}"
+
+[tool.cibuildwheel.macos]
+archs = ["arm64"]
+environment = { MACOSX_DEPLOYMENT_TARGET = "13.0" }
+repair-wheel-command = "delocate-wheel --require-archs {delocate_archs} -w {dest_dir} -v {wheel}"
+
+[tool.cibuildwheel.windows]
+archs = ["AMD64"]
+before-build = "pip install delvewheel"
+# Bundles the MSVC/OpenMP runtime into nemo_speech.libs. The libraries in
+# nemo_speech/lib are already part of the wheel (--ignore-existing). Name
+# mangling (--with-mangle) fails on this layout in delvewheel 1.10-1.13, so the
+# runtime stays unmangled; cmake/project_include.cmake covers the known
+# older-runtime incompatibility.
+repair-wheel-command = "delvewheel repair --analyze-existing --ignore-existing -w {dest_dir} {wheel}"

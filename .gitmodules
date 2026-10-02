@@ -1,0 +1,6 @@
+[submodule "vendor/NeMo-Speech.cpp"]
+	path = vendor/NeMo-Speech.cpp
+	url = https://github.com/NVIDIA/NeMo-Speech.cpp.git
+[submodule "vendor/sentencepiece"]
+	path = vendor/sentencepiece
+	url = https://github.com/google/sentencepiece.git
