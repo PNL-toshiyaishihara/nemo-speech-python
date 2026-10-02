@@ -18,8 +18,8 @@ speaker diarization, TTS (MagpieTTS) and NMT (Riva-Translate).
 |---|---|---|---|
 | Windows x64 | `win_amd64` | Vulkan | cibuildwheel from the sdist, delvewheel, all tests (CPU; Vulkan on Intel Iris Xe) |
 | Linux x86_64 | `manylinux_2_28_x86_64` | — | cibuildwheel from the sdist in Docker, auditwheel; all E2E tests on Debian 12 |
-| Linux aarch64 | `manylinux_2_28_aarch64` | — | CI configuration only, not run yet |
-| macOS arm64 | `macosx_13_0_arm64` | Metal | CI configuration only, not run yet |
+| Linux aarch64 | `manylinux_2_28_aarch64` | — | CI: cibuildwheel from the sdist, auditwheel, tests without models |
+| macOS arm64 | `macosx_13_0_arm64` | Metal | CI: cibuildwheel from the sdist, delocate, tests without models |
 
 CUDA builds are possible (`CMAKE_ARGS="-DGGML_CUDA=ON"`) but untested here.
 
@@ -58,6 +58,10 @@ without git metadata.
 
 The build tree is kept in `build/<wheel tag>/`, so rebuilds are incremental.
 Upstream CMake options pass straight through:
+
+On Windows, keep the build tree path short (the nested Vulkan shader-generator
+project otherwise exceeds MAX_PATH): build from a short checkout path or pass
+`-C build-dir=C:/b`.
 
 ```bash
 CMAKE_ARGS="-DGGML_VULKAN=ON" pip install .     # needs the Vulkan SDK (glslc)

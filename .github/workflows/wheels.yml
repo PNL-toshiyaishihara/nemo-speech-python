@@ -11,6 +11,12 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+env:
+  # cibuildwheel unpacks the sdist under %TEMP%; with the nested ExternalProject
+  # trees (wrapper -> NeMo-Speech.cpp -> ggml's vulkan-shaders-gen) MSBuild paths
+  # then exceed MAX_PATH. A short build directory keeps them well below it.
+  CIBW_CONFIG_SETTINGS_WINDOWS: build-dir=C:/b
+
 jobs:
   sdist:
     runs-on: ubuntu-24.04
