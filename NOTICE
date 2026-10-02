@@ -27,6 +27,12 @@ SentencePiece and, depending on the platform, compiler runtime libraries.
 Their license texts and notices are included in the package under
 nemo_speech/licenses/.
 
+CUDA wheels additionally bundle the NVIDIA CUDA Runtime, cuBLAS and cuBLASLt
+libraries. They are NVIDIA redistributables provided under the NVIDIA CUDA
+Toolkit End User License Agreement (nemo_speech/licenses/third_party/cuda/
+EULA.txt), are not covered by the Apache License, and are used only by this
+package.
+
 Models are not distributed with this project. nemo_speech.models downloads
 them on request from their publishers; they are governed by their own licenses,
 which you are responsible for reviewing and complying with.

@@ -44,6 +44,7 @@ set(NEMO_SPEECH_BUILD_NMT         ON  CACHE BOOL "Build text translation")
 set(NEMO_SPEECH_BUILD_CLI         OFF CACHE BOOL "Build the nemo-speech CLI")
 set(NEMO_SPEECH_BUILD_MIC_CAPTURE OFF CACHE BOOL "Build microphone capture")
 set(NEMO_SPEECH_GGML_PATCHED      ON  CACHE BOOL "Apply upstream patches/ to ggml and llama.cpp")
+set(NEMO_SPEECH_CUBLAS_SHIM       OFF CACHE BOOL "Use upstream's drop-in cuBLAS shim (CUDA)")
 set(GGML_NATIVE                   OFF CACHE BOOL "ggml: tune for the build host CPU")
 if(APPLE)
     # Metal is available on every supported Mac. ggml's own thread pool
@@ -51,6 +52,49 @@ if(APPLE)
     # the wheel to the build machine's macOS version).
     set(GGML_METAL                ON  CACHE BOOL "ggml: use Metal")
     set(GGML_OPENMP               OFF CACHE BOOL "ggml: use OpenMP")
+endif()
+
+# ---- CUDA ----
+# CUDA wheels bundle the real cuBLAS/cuBLASLt and the CUDA runtime (the repair
+# step copies them in), so a wheel needs nothing beyond the NVIDIA driver.
+if(GGML_CUDA)
+    # Upstream's drop-in cuBLAS shim must export everything the pinned ggml-cuda
+    # calls; at a5f19be it lacks cublasSetWorkspace_v2 and cublasSgemmBatched,
+    # and the resulting libraries fail to load.
+    if(NEMO_SPEECH_CUBLAS_SHIM)
+        file(READ "${NSP_UPSTREAM_DIR}/kernels/ver_cublas.map" _nsp_shim_map)
+        foreach(_nsp_symbol IN ITEMS cublasSetWorkspace_v2 cublasSgemmBatched)
+            if(NOT _nsp_shim_map MATCHES "[ \t\n]${_nsp_symbol};")
+                message(FATAL_ERROR
+                    "NEMO_SPEECH_CUBLAS_SHIM=ON: upstream's cuBLAS shim does not export "
+                    "${_nsp_symbol}, which the pinned ggml-cuda calls. Build without the "
+                    "shim; the wheel then bundles cuBLAS.")
+            endif()
+        endforeach()
+    endif()
+
+    # The bundled CUDA libraries are NVIDIA redistributables under the CUDA
+    # Toolkit EULA (not Apache-2.0); ship the EULA with them.
+    find_package(CUDAToolkit REQUIRED)
+    get_filename_component(_nsp_cuda_root "${CUDAToolkit_BIN_DIR}" DIRECTORY)
+    set(NSP_CUDA_EULA "")
+    # Windows installs and the cuda-documentation RPM put it in the toolkit
+    # root; the per-library RPMs ship it under /usr/share/licenses.
+    set(_nsp_cuda_rpm "${CUDAToolkit_VERSION_MAJOR}-${CUDAToolkit_VERSION_MINOR}")
+    foreach(_nsp_candidate IN ITEMS
+            "${_nsp_cuda_root}/LICENSE"
+            "${_nsp_cuda_root}/EULA.txt"
+            "/usr/share/licenses/libcublas-${_nsp_cuda_rpm}/LICENSE")
+        if(EXISTS "${_nsp_candidate}")
+            set(NSP_CUDA_EULA "${_nsp_candidate}")
+            break()
+        endif()
+    endforeach()
+    if(NOT NSP_CUDA_EULA)
+        message(FATAL_ERROR
+            "CUDA Toolkit EULA not found under ${_nsp_cuda_root}; it must ship with "
+            "the bundled CUDA libraries")
+    endif()
 endif()
 
 # ---- Patched llama.cpp ----
@@ -156,7 +200,10 @@ ExternalProject_Add(nsp_nemo_speech
         "-DNEMO_SPEECH_DEPENDENCY_PREFIX=${NSP_STAGE_DIR}"
         "-DCMAKE_PREFIX_PATH=${NSP_STAGE_DIR}/sentencepiece"
     BUILD_COMMAND "${CMAKE_COMMAND}" --build <BINARY_DIR> --config $<CONFIG> --parallel
-    INSTALL_COMMAND "${CMAKE_COMMAND}" --install <BINARY_DIR> --config $<CONFIG>
+    # Start from an empty prefix so libraries of a previous configuration
+    # (e.g. a since-disabled cuBLAS shim) never reach the wheel.
+    INSTALL_COMMAND "${CMAKE_COMMAND}" -E rm -rf <INSTALL_DIR>
+            COMMAND "${CMAKE_COMMAND}" --install <BINARY_DIR> --config $<CONFIG>
     # Rebuild on every outer build so edits under vendor/ are picked up.
     BUILD_ALWAYS TRUE
     USES_TERMINAL_CONFIGURE TRUE
@@ -182,6 +229,12 @@ else()
         set(NSP_LIB_SOURCE_DIR \"${NSP_UPSTREAM_PREFIX}/lib\")
         set(NSP_LIB_DESTINATION \"${NSP_PACKAGE_DIR}/lib\")")
     install(SCRIPT cmake/install_shared_libs.cmake)
+endif()
+
+if(NSP_CUDA_EULA)
+    install(FILES "${NSP_CUDA_EULA}"
+        DESTINATION "${NSP_PACKAGE_DIR}/licenses/third_party/cuda"
+        RENAME EULA.txt)
 endif()
 
 # Model catalog used by nemo_speech.models (same file the upstream CLI reads).

@@ -20,8 +20,11 @@ speaker diarization, TTS (MagpieTTS) and NMT (Riva-Translate).
 | Linux x86_64 | `manylinux_2_28_x86_64` | — | cibuildwheel from the sdist in Docker, auditwheel; all E2E tests on Debian 12 |
 | Linux aarch64 | `manylinux_2_28_aarch64` | — | CI: cibuildwheel from the sdist, auditwheel, tests without models |
 | macOS arm64 | `macosx_13_0_arm64` | Metal | CI: cibuildwheel from the sdist, delocate, tests without models |
+| Windows x64, CUDA 12.8 | `win_amd64` | CUDA | built and repaired locally (one architecture); not run on a GPU |
+| Linux x86_64, CUDA 12.8 | `manylinux_2_28_x86_64` | CUDA | built, repaired and tested against the driver stub locally (one architecture); not run on a GPU |
 
-CUDA builds are possible (`CMAKE_ARGS="-DGGML_CUDA=ON"`) but untested here.
+CUDA wheels (Linux x86_64, Windows x64) build without a GPU and bundle
+cuBLAS; see [CUDA](#cuda). They have not been run on an NVIDIA GPU yet.
 
 ## Layout
 
@@ -69,6 +72,36 @@ CMAKE_ARGS="-DGGML_CUDA=ON -DCMAKE_CUDA_ARCHITECTURES=89" pip install .   # unte
 # keep separate build trees per variant:
 pip wheel . -C build-dir=build/vulkan -C cmake.define.GGML_VULKAN=ON
 ```
+
+### CUDA
+
+Building needs the CUDA 12 toolkit (nvcc), not a GPU or driver:
+
+```bash
+CMAKE_ARGS="-DGGML_CUDA=ON -DCMAKE_CUDA_ARCHITECTURES=86-real" \
+    pip wheel . -C build-dir=build/cuda
+```
+
+- Set `CMAKE_CUDA_ARCHITECTURES` explicitly; `native` needs a GPU. Each
+  architecture adds substantial nvcc time. Release wheels use
+  `75-real;80-real;86-real;89-real;90-real;120` (Turing to Blackwell, plus
+  PTX for newer GPUs).
+- The wheel is self-contained apart from the NVIDIA driver: the repair step
+  bundles the CUDA runtime, cuBLAS and cuBLASLt (about 600 MB), which are
+  NVIDIA redistributables under the CUDA Toolkit EULA (shipped in
+  `nemo_speech/licenses/third_party/cuda/`). Repair with
+  `auditwheel repair --exclude libcuda.so.1` or
+  `delvewheel repair --analyze-existing --ignore-existing --exclude nvcuda.dll`
+  so the driver itself is never bundled. Without a driver the import fails
+  with a message saying so.
+- Upstream's drop-in cuBLAS shim (`NEMO_SPEECH_CUBLAS_SHIM`) does not cover
+  the pinned ggml-cuda (it lacks `cublasSetWorkspace_v2` and
+  `cublasSgemmBatched`); the build refuses it until upstream catches up.
+- Windows: nvcc cannot use a `%TEMP%` path with non-ASCII characters (for
+  example a Japanese user name); point `TEMP`/`TMP` at an ASCII directory for
+  the build.
+
+CI builds the CUDA wheels on tags and manual runs (`wheels-cuda` job).
 
 Wheel defaults: ASR, diarization, TTS and NMT on; CLI and microphone capture
 off; `GGML_NATIVE=OFF` (portable AVX2 baseline on x86-64); on macOS Metal on
@@ -207,6 +240,10 @@ Upstream (worth reporting to NeMo-Speech.cpp):
   "keep the preset"; the bindings pass -1.
 - **Non-relocatable TTS data.** The Japanese/Mandarin tokenizers compile
   absolute data paths into the library, so they cannot ship in a wheel.
+- **cuBLAS shim out of date.** Since the llama.cpp update in a5f19be, ggml-cuda
+  calls `cublasSetWorkspace_v2` and `cublasSgemmBatched`, which
+  `kernels/cublas_shim.cu` does not provide, so shim-based CUDA builds fail to
+  load.
 
 This package:
 

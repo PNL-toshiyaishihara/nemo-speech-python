@@ -44,6 +44,22 @@ def _register_dll_directories(directory: pathlib.Path) -> None:
             _dll_directory_handles.append(os.add_dll_directory(str(d)))
 
 
+def _missing_cuda_driver_hint(directory: pathlib.Path) -> str:
+    """Explain a load failure of a CUDA build on a machine without the driver."""
+    if not any(directory.glob("*ggml-cuda*")):
+        return ""
+    driver = "nvcuda.dll" if sys.platform == "win32" else "libcuda.so.1"
+    try:
+        ctypes.CDLL(driver)
+        return ""
+    except OSError:
+        return (
+            f" This is a CUDA build of nemo-speech, which needs the NVIDIA driver "
+            f"({driver}); it was not found. Install an NVIDIA driver, or install "
+            "the CPU wheel instead."
+        )
+
+
 @functools.lru_cache(maxsize=None)
 def load_library(stem: str) -> ctypes.CDLL:
     """Load ``stem`` (e.g. ``"nemo_speech_asr_c"``) from :func:`library_dir`."""
@@ -56,7 +72,8 @@ def load_library(stem: str) -> ctypes.CDLL:
             try:
                 return ctypes.CDLL(str(path))
             except OSError as e:
-                raise OSError(f"failed to load {path}: {e}") from e
+                hint = _missing_cuda_driver_hint(directory)
+                raise OSError(f"failed to load {path}: {e}{hint}") from e
     tried = ", ".join(str(p) for p in candidates)
     raise FileNotFoundError(
         f"NeMo-Speech.cpp library '{stem}' not found (tried: {tried}). "
