@@ -6,9 +6,16 @@ on:
     tags: ["v*"]
   pull_request:
   workflow_dispatch:
+    inputs:
+      target:
+        description: Wheels to build
+        type: choice
+        default: all
+        options: [all, cuda, cuda-windows, cuda-linux]
 
+# Per event, so a push never cancels a long manual or tag run.
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  group: ${{ github.workflow }}-${{ github.ref }}-${{ github.event_name }}
   cancel-in-progress: true
 
 env:
@@ -36,6 +43,7 @@ jobs:
   # CPU wheels, built from the sdist so a file missing from it fails here.
   wheels:
     needs: sdist
+    if: (inputs.target || 'all') == 'all'
     strategy:
       fail-fast: false
       matrix:
@@ -62,6 +70,7 @@ jobs:
   # belongs on a separate index (as llama-cpp-python does for GPU builds).
   wheels-vulkan-windows:
     needs: sdist
+    if: (inputs.target || 'all') == 'all'
     runs-on: windows-2022
     env:
       VULKAN_SDK_VERSION: "1.4.341.1"
@@ -106,7 +115,8 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-24.04, windows-2022]
+        # Manual runs can pick one platform (inputs are empty on tag pushes).
+        os: ${{ fromJSON((inputs.target == 'cuda-windows' && '["windows-2022"]') || (inputs.target == 'cuda-linux' && '["ubuntu-24.04"]') || '["ubuntu-24.04", "windows-2022"]') }}
     runs-on: ${{ matrix.os }}
     timeout-minutes: 360
     env:
@@ -129,6 +139,8 @@ jobs:
           # The installer does not always register with the runner's VS edition.
           $vs = & "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe" -latest -property installationPath
           Copy-Item "$cuda\extras\visual_studio_integration\MSBuildExtensions\*" "$vs\MSBuild\Microsoft\VC\v170\BuildCustomizations" -Force
+          # The MSBuild CUDA integration locates the toolkit through this.
+          "CUDA_PATH_V12_8=$cuda" | Out-File -Append $env:GITHUB_ENV
           "CUDA_PATH=$cuda" | Out-File -Append $env:GITHUB_ENV
           "$cuda\bin" | Out-File -Append $env:GITHUB_PATH
       - name: Locate sdist
