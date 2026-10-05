@@ -6,6 +6,7 @@ import ctypes
 from typing import Any, List, Optional, Sequence, Union, overload
 
 from ._common import PathLike, decode, fsencode_or_none, status_checker
+from ._paths import utf8_file_paths
 from .capi import nmt as C
 
 __all__ = ["Translator", "version"]
@@ -53,7 +54,10 @@ class Translator:
         if contexts:
             cfg.pool = ctypes.pointer(C.nemo_speech_nmt_pool_config(contexts=contexts))
         handle = C.nemo_speech_nmt_translator_p()
-        _check(C.nemo_speech_nmt_create(ctypes.byref(cfg), ctypes.byref(handle)))
+        # Some components open their files with narrow C runtime APIs.
+        with utf8_file_paths():
+            status = C.nemo_speech_nmt_create(ctypes.byref(cfg), ctypes.byref(handle))
+        _check(status)
         self._handle = handle
 
     @overload

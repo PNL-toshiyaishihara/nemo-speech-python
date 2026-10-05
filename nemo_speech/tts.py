@@ -11,6 +11,7 @@ from typing import Any, Callable, Dict, Iterator, List, Optional, Sequence
 import numpy as np
 
 from ._common import PathLike, decode, fsencode_or_none, status_checker
+from ._paths import utf8_file_paths
 from .capi import tts as C
 
 __all__ = ["SynthesisResult", "Synthesizer", "version"]
@@ -107,7 +108,10 @@ class Synthesizer:
             default_voice_name=voice.encode() if voice else None,
         )
         handle = C.nemo_speech_tts_synthesizer_p()
-        _check(C.nemo_speech_tts_create(ctypes.byref(cfg), ctypes.byref(handle)))
+        # Some components open their files with narrow C runtime APIs.
+        with utf8_file_paths():
+            status = C.nemo_speech_tts_create(ctypes.byref(cfg), ctypes.byref(handle))
+        _check(status)
         self._handle = handle
 
     @classmethod

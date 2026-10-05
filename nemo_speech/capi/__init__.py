@@ -4,6 +4,10 @@ Each submodule mirrors one header under ``include/nemo_speech/`` one-to-one:
 struct, enum and function names match the C declarations, so the C
 documentation applies unchanged. Prefer the high-level API in
 :mod:`nemo_speech` unless you need direct control over handles.
+
+Paths are UTF-8 (``os.fsencode`` on Windows). Wrap the ``*_create`` calls in
+:func:`utf8_file_paths` so that components opening files with narrow C
+runtime APIs also accept non-ASCII paths on Windows.
 """
 
 from __future__ import annotations
@@ -11,6 +15,10 @@ from __future__ import annotations
 import ctypes
 import functools
 from typing import Any, Callable, Sequence
+
+from .._paths import utf8_file_paths
+
+__all__ = ["SizedStructure", "ctypes_function_for", "utf8_file_paths"]
 
 
 class SizedStructure(ctypes.Structure):

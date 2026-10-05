@@ -10,6 +10,7 @@ from typing import Any, List, Optional, Sequence, Tuple
 import numpy as np
 
 from ._common import PathLike, as_mono_f32, decode, fsencode_or_none, status_checker
+from ._paths import utf8_file_paths
 from .capi import asr as C
 
 __all__ = [
@@ -291,7 +292,10 @@ class Recognizer:
             cfg.decoder = ctypes.pointer(decoder)
 
         handle = C.nemo_speech_asr_recognizer_p()
-        _check(C.nemo_speech_asr_create(ctypes.byref(cfg), ctypes.byref(handle)))
+        # Some components open their files with narrow C runtime APIs.
+        with utf8_file_paths():
+            status = C.nemo_speech_asr_create(ctypes.byref(cfg), ctypes.byref(handle))
+        _check(status)
         self._handle = handle
 
     @classmethod

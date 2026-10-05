@@ -37,7 +37,11 @@ def status_checker(last_error: Callable[[], Optional[bytes]]) -> Callable[[int],
 
 
 def fsencode_or_none(path: Optional[PathLike]) -> Optional[bytes]:
-    """Encode a path for the C ABI (UTF-8 on Windows, as ggml_fopen expects)."""
+    """Encode a path for the C ABI (UTF-8 on Windows, as ggml_fopen expects).
+
+    Native calls that open such paths must run inside
+    :func:`nemo_speech._paths.utf8_file_paths`; see there.
+    """
     if path is None:
         return None
     return os.fsencode(os.fspath(path))

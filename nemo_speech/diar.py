@@ -14,6 +14,7 @@ from typing import Any, List, Optional
 import numpy as np
 
 from ._common import PathLike, as_mono_f32, fsencode_or_none, status_checker
+from ._paths import utf8_file_paths
 from .capi import asr as _asr
 from .capi import diar as C
 
@@ -220,7 +221,10 @@ class Diarizer:
             update_period_frames=update_period_frames or 0,
         )
         handle = C.nemo_speech_diar_model_p()
-        _check(C.nemo_speech_diar_create(ctypes.byref(cfg), ctypes.byref(handle)))
+        # Some components open their files with narrow C runtime APIs.
+        with utf8_file_paths():
+            status = C.nemo_speech_diar_create(ctypes.byref(cfg), ctypes.byref(handle))
+        _check(status)
         self._handle = handle
 
     @classmethod
