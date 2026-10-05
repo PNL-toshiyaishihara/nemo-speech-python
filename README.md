@@ -20,8 +20,8 @@ speaker diarization, TTS (MagpieTTS) and NMT (Riva-Translate).
 | Linux x86_64 | `manylinux_2_28_x86_64` | — | cibuildwheel from the sdist in Docker, auditwheel; all E2E tests on Debian 12 |
 | Linux aarch64 | `manylinux_2_28_aarch64` | — | CI: cibuildwheel from the sdist, auditwheel, tests without models |
 | macOS arm64 | `macosx_13_0_arm64` | Metal | CI: cibuildwheel from the sdist, delocate, tests without models |
-| Windows x64, CUDA 12.8 | `win_amd64` | CUDA | built and repaired locally (one architecture); not run on a GPU |
-| Linux x86_64, CUDA 12.8 | `manylinux_2_28_x86_64` | CUDA | built, repaired and tested against the driver stub locally (one architecture); not run on a GPU |
+| Windows x64, CUDA 12.8 | `win_amd64` | CUDA | CI: all release architectures built and repaired (704 MB, about 90 minutes); not run on a GPU |
+| Linux x86_64, CUDA 12.8 | `manylinux_2_28_x86_64` | CUDA | CI: all release architectures built, repaired and tested against the driver stub (732 MB, about 80 minutes); not run on a GPU |
 
 CUDA wheels (Linux x86_64, Windows x64) build without a GPU and bundle
 cuBLAS; see [CUDA](#cuda). They have not been run on an NVIDIA GPU yet.
