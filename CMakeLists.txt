@@ -59,8 +59,8 @@ endif()
 # step copies them in), so a wheel needs nothing beyond the NVIDIA driver.
 if(GGML_CUDA)
     # Upstream's drop-in cuBLAS shim must export everything the pinned ggml-cuda
-    # calls; at a5f19be it lacks cublasSetWorkspace_v2 and cublasSgemmBatched,
-    # and the resulting libraries fail to load.
+    # calls, or the resulting libraries fail to load. Before v0.2.0 it lacked
+    # cublasSetWorkspace_v2 and cublasSgemmBatched.
     if(NEMO_SPEECH_CUBLAS_SHIM)
         file(READ "${NSP_UPSTREAM_DIR}/kernels/ver_cublas.map" _nsp_shim_map)
         foreach(_nsp_symbol IN ITEMS cublasSetWorkspace_v2 cublasSgemmBatched)
