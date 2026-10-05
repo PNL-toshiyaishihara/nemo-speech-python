@@ -1,0 +1,46 @@
+# CUDA smoke build: one architecture (sm_86), Linux and Windows, built,
+# repaired and (Linux) tested against the driver stub. Runs only when a change
+# can affect the native build; Python-only changes cannot break it because the
+# bindings use ctypes. The full multi-architecture build is in wheels.yml.
+name: cuda-smoke
+
+# Keep the two path lists identical.
+on:
+  push:
+    branches: [main]
+    paths:
+      - "vendor/**"
+      - "CMakeLists.txt"
+      - "cmake/**"
+      - "patches/**"
+      - "pyproject.toml"
+      - "nemo_speech/_loader.py"
+      - ".github/workflows/sdist.yml"
+      - ".github/workflows/cuda.yml"
+      - ".github/workflows/cuda-smoke.yml"
+  pull_request:
+    paths:
+      - "vendor/**"
+      - "CMakeLists.txt"
+      - "cmake/**"
+      - "patches/**"
+      - "pyproject.toml"
+      - "nemo_speech/_loader.py"
+      - ".github/workflows/sdist.yml"
+      - ".github/workflows/cuda.yml"
+      - ".github/workflows/cuda-smoke.yml"
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  sdist:
+    uses: ./.github/workflows/sdist.yml
+
+  cuda:
+    needs: sdist
+    uses: ./.github/workflows/cuda.yml
+    with:
+      archs: "86-real"
+      upload: false

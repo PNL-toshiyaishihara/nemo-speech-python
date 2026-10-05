@@ -1,0 +1,94 @@
+# Reusable: CUDA 12.8 wheels (Linux x86_64 and Windows x64) from the sdist
+# artifact of the calling run.
+#
+# The repair step bundles the CUDA runtime, cuBLAS and cuBLASLt so a wheel needs
+# only the NVIDIA driver (libcuda.so.1 / nvcuda.dll), which is never bundled.
+# CUDA wheels share the distribution name with the CPU wheel and belong on a
+# separate index.
+name: cuda
+
+on:
+  workflow_call:
+    inputs:
+      archs:
+        description: CMAKE_CUDA_ARCHITECTURES
+        type: string
+        required: true
+      platforms:
+        description: JSON list of runners
+        type: string
+        default: '["ubuntu-24.04", "windows-2022"]'
+      upload:
+        description: Upload the wheels as artifacts (about 600 MB each)
+        type: boolean
+        default: true
+
+jobs:
+  wheel:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: ${{ fromJSON(inputs.platforms) }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 360
+    env:
+      # The caller's workflow-level env does not reach a reusable workflow.
+      # See wheels.yml: nested ExternalProject trees exceed MAX_PATH under %TEMP%.
+      CIBW_CONFIG_SETTINGS_WINDOWS: build-dir=C:/b
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          name: sdist
+          path: sdist
+      - name: Install the CUDA 12.8 toolkit (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $installer = "$env:RUNNER_TEMP\cuda-network.exe"
+          Invoke-WebRequest "https://developer.download.nvidia.com/compute/cuda/12.8.1/network_installers/cuda_12.8.1_windows_network.exe" -OutFile $installer
+          $p = Start-Process $installer -Wait -PassThru -ArgumentList "-s nvcc_12.8 cudart_12.8 cublas_12.8 cublas_dev_12.8 thrust_12.8 visual_studio_integration_12.8"
+          if ($p.ExitCode -ne 0) { throw "CUDA installer exited with $($p.ExitCode)" }
+          $cuda = "C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.8"
+          # The installer does not always register with the runner's VS edition.
+          $vs = & "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe" -latest -property installationPath
+          Copy-Item "$cuda\extras\visual_studio_integration\MSBuildExtensions\*" "$vs\MSBuild\Microsoft\VC\v170\BuildCustomizations" -Force
+          # The MSBuild CUDA integration locates the toolkit through this.
+          "CUDA_PATH_V12_8=$cuda" | Out-File -Append $env:GITHUB_ENV
+          "CUDA_PATH=$cuda" | Out-File -Append $env:GITHUB_ENV
+          "$cuda\bin" | Out-File -Append $env:GITHUB_PATH
+      - name: Locate sdist
+        shell: bash
+        run: echo "SDIST=$(ls sdist/*.tar.gz)" >> "$GITHUB_ENV"
+      - uses: pypa/cibuildwheel@v4.2.1
+        with:
+          package-dir: ${{ env.SDIST }}
+          output-dir: wheelhouse
+        env:
+          CIBW_ARCHS_LINUX: x86_64
+          CIBW_BEFORE_ALL_LINUX: >-
+            git config --global --add safe.directory '*' &&
+            dnf install -y dnf-plugins-core &&
+            dnf config-manager --add-repo https://developer.download.nvidia.com/compute/cuda/repos/rhel8/x86_64/cuda-rhel8.repo &&
+            dnf install -y cuda-nvcc-12-8 cuda-cudart-devel-12-8 cuda-cccl-12-8 cuda-driver-devel-12-8 libcublas-devel-12-8 cuda-documentation-12-8
+          CIBW_ENVIRONMENT_LINUX: >-
+            CUDACXX=/usr/local/cuda-12.8/bin/nvcc
+            PATH=/usr/local/cuda-12.8/bin:$PATH
+            CMAKE_ARGS="-DGGML_CUDA=ON -DCMAKE_CUDA_ARCHITECTURES=${{ inputs.archs }}"
+          CIBW_ENVIRONMENT_WINDOWS: >-
+            CMAKE_ARGS="-DGGML_CUDA=ON -DCMAKE_CUDA_ARCHITECTURES=${{ inputs.archs }}"
+          CIBW_REPAIR_WHEEL_COMMAND_LINUX: auditwheel repair --exclude libcuda.so.1 -w {dest_dir} {wheel}
+          CIBW_REPAIR_WHEEL_COMMAND_WINDOWS: >-
+            delvewheel repair --analyze-existing --ignore-existing --exclude nvcuda.dll -w {dest_dir} {wheel}
+          # No GPU driver on the runners. Linux loads the toolkit's stub
+          # libcuda (no devices, so everything runs on the CPU); Windows has no
+          # stub, so its wheel is only built and repaired.
+          CIBW_TEST_COMMAND_LINUX: >-
+            mkdir -p /tmp/cudastub &&
+            ln -sf /usr/local/cuda-12.8/lib64/stubs/libcuda.so /tmp/cudastub/libcuda.so.1 &&
+            LD_LIBRARY_PATH=/tmp/cudastub pytest {project}/tests -p no:cacheprovider
+          CIBW_TEST_SKIP: "*-win_amd64"
+      - uses: actions/upload-artifact@v7
+        if: inputs.upload
+        with:
+          name: wheels-cuda-${{ matrix.os }}
+          path: wheelhouse/*.whl

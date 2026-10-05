@@ -207,11 +207,21 @@ missing from `nemo_speech/capi`; run it after moving the submodule.
 
 ### CI and releases
 
-`.github/workflows/wheels.yml` builds the sdist, then CPU wheels from it with
-cibuildwheel (Linux x86_64/aarch64, Windows x64, macOS arm64), repaired with
-auditwheel/delvewheel/delocate and tested, plus a Windows Vulkan wheel. The
-cibuildwheel settings live in `pyproject.toml`; the Linux and Windows parts
-run locally too:
+Every wheel is built from the sdist with cibuildwheel and repaired with
+auditwheel/delvewheel/delocate. Builds are tiered by cost:
+
+| Workflow | When | Builds |
+|---|---|---|
+| `wheels.yml` | every push and PR | CPU wheels (Linux x86_64/aarch64, Windows x64, macOS arm64, all tested) and the Windows Vulkan wheel, about 20 minutes |
+| `cuda-smoke.yml` | pushes and PRs that touch `vendor/`, `CMakeLists.txt`, `cmake/`, `patches/`, `pyproject.toml`, the loader or the CUDA workflows | CUDA wheels for one architecture (sm_86), Linux tested against the driver stub; nothing uploaded |
+| `wheels.yml` `wheels-cuda` | tags `v*` and manual runs | CUDA wheels for all release architectures; a manual run can pick `target: cuda`, `cuda-windows` or `cuda-linux` |
+
+Python-only changes cannot break the CUDA build (the bindings use ctypes),
+which is why the CUDA tiers watch only the native inputs. `sdist.yml` and
+`cuda.yml` are the reusable pieces shared by both workflows.
+
+The cibuildwheel settings live in `pyproject.toml`; the Linux and Windows
+parts run locally too:
 
 ```bash
 python -m build --sdist -o dist/sdist

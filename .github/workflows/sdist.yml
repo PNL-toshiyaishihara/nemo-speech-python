@@ -1,0 +1,21 @@
+# Reusable: builds the sdist that every wheel job builds from.
+name: sdist
+
+on:
+  workflow_call:
+
+jobs:
+  sdist:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+      - name: Check out the submodules the build needs
+        run: |
+          git submodule update --init vendor/NeMo-Speech.cpp vendor/sentencepiece
+          git -C vendor/NeMo-Speech.cpp submodule update --init --depth 1 llama.cpp
+      - name: Build sdist
+        run: pipx run build --sdist
+      - uses: actions/upload-artifact@v7
+        with:
+          name: sdist
+          path: dist/*.tar.gz
