@@ -269,10 +269,19 @@ This package:
   with `_DISABLE_CONSTEXPR_MUTEX_CONSTRUCTOR`. The bundled `msvcp140.dll` comes
   from the build machine (delvewheel warns when it is newer than Python's own
   `vcruntime140.dll`, which the process uses regardless).
-- **Non-ASCII paths.** Paths are passed as UTF-8. Models load through
-  `ggml_fopen` and accept any path; some auxiliary files (e.g. the profanity
-  list) are opened with `std::ifstream` upstream and may fail on Windows when
-  the path contains non-ASCII characters.
+- **Non-ASCII paths on Windows (handled).** Paths are passed to the C ABI as
+  UTF-8. Most components open them with `ggml_fopen` (UTF-8 aware), but the
+  MagpieTTS and NanoCodec models, the TTS tokenizer assets and the ASR
+  profanity list use narrow `fopen` / `std::ifstream` / `std::filesystem`,
+  which the C runtime reads in the ANSI code page (932 on a default Japanese
+  Windows). A model cache under a Japanese user name would then fail to load
+  (the profanity list would silently be empty). The high-level classes wrap
+  model creation in `nemo_speech.capi.utf8_file_paths()`, which gives the
+  calling thread a UTF-8 C locale for that call only; low-level
+  `nemo_speech.capi` users should do the same. Systems with the "Beta: Use
+  Unicode UTF-8" setting were never affected. 8.3 short names are no
+  alternative: a name of up to eight bytes in the OEM code page, such as a
+  four-kanji user name, has no separate short name.
 - **Logging.** The libraries log to stderr; the C ABI has no switch for it.
 
 ## License
