@@ -45,7 +45,15 @@ def ctypes_function_for(lib: ctypes.CDLL):
         name: str, argtypes: Sequence[Any], restype: Any
     ) -> Callable[[Callable[..., Any]], Any]:
         def decorator(stub: Callable[..., Any]) -> Any:
-            func = getattr(lib, name)
+            try:
+                func = getattr(lib, name)
+            except AttributeError:
+                # Raised while importing the module, where `from nemo_speech
+                # import X` would otherwise hide it behind "cannot import name".
+                raise ImportError(
+                    f"{lib._name} does not export {name}: it is not the NeMo-Speech.cpp "
+                    "build these bindings were made for (check NEMO_SPEECH_LIB_PATH)"
+                ) from None
             func.argtypes = list(argtypes)
             func.restype = restype
             functools.wraps(stub)(func)
