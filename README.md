@@ -20,11 +20,30 @@ speaker diarization, TTS (MagpieTTS) and NMT (Riva-Translate).
 | Linux x86_64 | `manylinux_2_28_x86_64` | — | cibuildwheel from the sdist in Docker, auditwheel; all E2E tests on Debian 12 |
 | Linux aarch64 | `manylinux_2_28_aarch64` | — | CI: cibuildwheel from the sdist, auditwheel, tests without models |
 | macOS arm64 | `macosx_13_0_arm64` | Metal | CI: cibuildwheel from the sdist, delocate, tests without models |
-| Windows x64, CUDA 12.8 | `win_amd64` | CUDA | CI: all release architectures built and repaired (704 MB, about 90 minutes); not run on a GPU |
-| Linux x86_64, CUDA 12.8 | `manylinux_2_28_x86_64` | CUDA | CI: all release architectures built, repaired and tested against the driver stub (732 MB, about 80 minutes); not run on a GPU |
+| Windows x64, CUDA 12.8 / 13.0 | `win_amd64` | CUDA | CI: all release architectures built and repaired (12.8: 704 MB, about 90 minutes); not run on a GPU |
+| Linux x86_64, CUDA 12.8 / 13.0 | `manylinux_2_28_x86_64` | CUDA | CI: all release architectures built, repaired and tested against the driver stub (12.8: 732 MB, about 80 minutes); not run on a GPU |
 
 CUDA wheels (Linux x86_64, Windows x64) build without a GPU and bundle
 cuBLAS; see [CUDA](#cuda). They have not been run on an NVIDIA GPU yet.
+Python 3.10 to 3.14 is supported and tested.
+
+## Install
+
+Pre-built wheels are attached to the
+[GitHub Releases](https://github.com/PNL-toshiyaishihara/nemo-speech-python/releases);
+each release lists every file with its requirements. All variants share the
+distribution name `nemo-speech` and differ by a local version label (none for
+CPU, `+vulkan`, `+cu128`, `+cu130`), so install the file for your platform
+and backend by URL:
+
+```bash
+pip install https://github.com/PNL-toshiyaishihara/nemo-speech-python/releases/download/v0.1.0/nemo_speech-0.1.0+cu128-py3-none-win_amd64.whl
+```
+
+GPU wheels bundle their runtime libraries and need only the GPU driver (CUDA
+12.8: NVIDIA R570 or newer; CUDA 13.0: R580 or newer).
+`nemo_speech.build_info()` reports how an installation was built, including
+the vendored source commits; please include it in bug reports.
 
 ## Layout
 
@@ -40,11 +59,13 @@ cuBLAS; see [CUDA](#cuda). They have not been run on an NVIDIA GPU yet.
 | `nemo_speech/models.py` | Model catalog and downloads, sharing the CLI's cache |
 | `vendor/` | `NeMo-Speech.cpp` and `sentencepiece` submodules |
 | `tests/` | ABI drift checks against the vendored headers, unit and E2E tests |
-| `.github/workflows/wheels.yml` | sdist → cibuildwheel for every platform, plus a Windows Vulkan wheel |
+| `.github/workflows/` | CI and releases (see [CI and releases](#ci-and-releases)) |
+| `scripts/` | `source_revisions.py` (records submodule commits in the sdist), `release_notes.py` |
+| `RELEASING.md` | Versioning, branches/PRs and the release procedure |
 
 ## Build from source
 
-Requirements: Python 3.9+, CMake 3.26+, git, and a C++17 compiler
+Requirements: Python 3.10+, CMake 3.26+, git, and a C++17 compiler
 (Windows: Visual Studio 2022 or its Build Tools with the C++ workload).
 
 ```bash
@@ -214,13 +235,14 @@ auditwheel/delvewheel/delocate. Builds are tiered by cost:
 
 | Workflow | When | Builds |
 |---|---|---|
-| `wheels.yml` | every push and PR | CPU wheels (Linux x86_64/aarch64, Windows x64, macOS arm64, all tested) and the Windows Vulkan wheel, about 20 minutes |
-| `cuda-smoke.yml` | pushes and PRs that touch `vendor/`, `CMakeLists.txt`, `cmake/`, `patches/`, `pyproject.toml`, the loader or the CUDA workflows | CUDA wheels for one architecture (sm_86), Linux tested against the driver stub; nothing uploaded |
-| `wheels.yml` `wheels-cuda` | tags `v*` and manual runs | CUDA wheels for all release architectures; a manual run can pick `target: cuda`, `cuda-windows` or `cuda-linux` |
+| `wheels.yml` | every push to `main` and every PR | CPU wheels (Linux x86_64/aarch64, Windows x64, macOS arm64) and the Windows Vulkan wheel, each tested on Python 3.10 to 3.14 |
+| `cuda-smoke.yml` | pushes and PRs that touch `vendor/`, `CMakeLists.txt`, `cmake/`, `patches/`, `pyproject.toml`, the loader or the CUDA workflows | CUDA 12.8 and 13.0 wheels for one architecture (sm_86), Linux tested against the driver stub; nothing uploaded |
+| `wheels.yml` manual run | on demand | adds the full CUDA wheels; `target` picks `cuda`, `cuda-windows` or `cuda-linux`, `cuda` picks `12.8` or `13.0` |
+| `release.yml` | tags `v*` | every variant, then a draft GitHub Release with notes and `SHA256SUMS` (see [RELEASING.md](RELEASING.md)) |
 
 Python-only changes cannot break the CUDA build (the bindings use ctypes),
-which is why the CUDA tiers watch only the native inputs. `sdist.yml` and
-`cuda.yml` are the reusable pieces shared by both workflows.
+which is why the CUDA tiers watch only the native inputs. `sdist.yml`,
+`cpu.yml`, `vulkan.yml` and `cuda.yml` are the reusable pieces.
 
 The cibuildwheel settings live in `pyproject.toml`; the Linux and Windows
 parts run locally too:
@@ -231,9 +253,8 @@ cibuildwheel dist/sdist/*.tar.gz --platform linux --archs x86_64   # needs Docke
 cibuildwheel dist/sdist/*.tar.gz --platform windows
 ```
 
-GPU wheels share the distribution name with the CPU wheel, so like
-llama-cpp-python they belong on a separate package index. Publishing is not
-configured yet.
+Releases go to GitHub Releases only for now; PyPI is planned (CPU wheels and
+the sdist; PyPI does not accept local version labels).
 
 ## Known issues
 

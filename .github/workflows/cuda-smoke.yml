@@ -1,7 +1,8 @@
-# CUDA smoke build: one architecture (sm_86), Linux and Windows, built,
-# repaired and (Linux) tested against the driver stub. Runs only when a change
-# can affect the native build; Python-only changes cannot break it because the
-# bindings use ctypes. The full multi-architecture build is in wheels.yml.
+# CUDA smoke build: one architecture (sm_86) per CUDA release, Linux and
+# Windows, built, repaired and (Linux) tested against the driver stub. Runs
+# only when a change can affect the native build; Python-only changes cannot
+# break it because the bindings use ctypes. The full multi-architecture build
+# runs in release.yml (tags) and on manual wheels.yml runs.
 name: cuda-smoke
 
 # Keep the two path lists identical.
@@ -15,6 +16,7 @@ on:
       - "patches/**"
       - "pyproject.toml"
       - "nemo_speech/_loader.py"
+      - "scripts/source_revisions.py"
       - ".github/workflows/sdist.yml"
       - ".github/workflows/cuda.yml"
       - ".github/workflows/cuda-smoke.yml"
@@ -26,6 +28,7 @@ on:
       - "patches/**"
       - "pyproject.toml"
       - "nemo_speech/_loader.py"
+      - "scripts/source_revisions.py"
       - ".github/workflows/sdist.yml"
       - ".github/workflows/cuda.yml"
       - ".github/workflows/cuda-smoke.yml"
@@ -40,7 +43,12 @@ jobs:
 
   cuda:
     needs: sdist
+    strategy:
+      fail-fast: false
+      matrix:
+        cuda: ["12.8.1", "13.0.2"]
     uses: ./.github/workflows/cuda.yml
     with:
+      cuda: ${{ matrix.cuda }}
       archs: "86-real"
       upload: false

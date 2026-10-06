@@ -1,9 +1,11 @@
+# Every push to main and every PR: CPU and Vulkan wheels, built from the sdist
+# and tested. Manual runs can also build the full CUDA wheels; tags are built
+# by release.yml.
 name: wheels
 
 on:
   push:
     branches: [main]
-    tags: ["v*"]
   pull_request:
   workflow_dispatch:
     inputs:
@@ -12,94 +14,43 @@ on:
         type: choice
         default: all
         options: [all, cuda, cuda-windows, cuda-linux]
+      cuda:
+        description: CUDA releases for CUDA targets
+        type: choice
+        default: all
+        options: [all, "12.8", "13.0"]
 
-# Per event, so a push never cancels a long manual or tag run.
+# Per event, so a push never cancels a long manual run.
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}-${{ github.event_name }}
   cancel-in-progress: true
-
-env:
-  # cibuildwheel unpacks the sdist under %TEMP%; with the nested ExternalProject
-  # trees (wrapper -> NeMo-Speech.cpp -> ggml's vulkan-shaders-gen) MSBuild paths
-  # then exceed MAX_PATH. A short build directory keeps them well below it.
-  CIBW_CONFIG_SETTINGS_WINDOWS: build-dir=C:/b
 
 jobs:
   sdist:
     uses: ./.github/workflows/sdist.yml
 
-  # CPU wheels, built from the sdist so a file missing from it fails here.
-  wheels:
+  cpu:
     needs: sdist
     if: (inputs.target || 'all') == 'all'
+    uses: ./.github/workflows/cpu.yml
+
+  vulkan:
+    needs: sdist
+    if: (inputs.target || 'all') == 'all'
+    uses: ./.github/workflows/vulkan.yml
+
+  # Full CUDA wheels (several hours of nvcc); manual runs only. cuda-smoke.yml
+  # covers native changes with a single architecture. Keep the toolkit and
+  # architecture lists in sync with release.yml.
+  cuda:
+    needs: sdist
+    if: github.event_name == 'workflow_dispatch'
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-24.04, ubuntu-24.04-arm, windows-2022, macos-14]
-    runs-on: ${{ matrix.os }}
-    steps:
-      - uses: actions/download-artifact@v8
-        with:
-          name: sdist
-          path: sdist
-      - name: Locate sdist
-        shell: bash
-        run: echo "SDIST=$(ls sdist/*.tar.gz)" >> "$GITHUB_ENV"
-      - uses: pypa/cibuildwheel@v4.2.1
-        with:
-          package-dir: ${{ env.SDIST }}
-          output-dir: wheelhouse
-      - uses: actions/upload-artifact@v7
-        with:
-          name: wheels-cpu-${{ matrix.os }}
-          path: wheelhouse/*.whl
-
-  # Vulkan variant for Windows. Same distribution name as the CPU wheel, so it
-  # belongs on a separate index (as llama-cpp-python does for GPU builds).
-  wheels-vulkan-windows:
-    needs: sdist
-    if: (inputs.target || 'all') == 'all'
-    runs-on: windows-2022
-    env:
-      VULKAN_SDK_VERSION: "1.4.341.1"
-    steps:
-      - uses: actions/download-artifact@v8
-        with:
-          name: sdist
-          path: sdist
-      - name: Install the Vulkan SDK (glslc and the loader)
-        shell: pwsh
-        run: |
-          $installer = "$env:RUNNER_TEMP\vulkan-sdk.exe"
-          Invoke-WebRequest "https://sdk.lunarg.com/sdk/download/$env:VULKAN_SDK_VERSION/windows/vulkansdk-windows-X64-$env:VULKAN_SDK_VERSION.exe" -OutFile $installer
-          & $installer --root "C:\VulkanSDK\$env:VULKAN_SDK_VERSION" --accept-licenses --default-answer --confirm-command install
-          "VULKAN_SDK=C:\VulkanSDK\$env:VULKAN_SDK_VERSION" | Out-File -Append $env:GITHUB_ENV
-          "C:\VulkanSDK\$env:VULKAN_SDK_VERSION\Bin" | Out-File -Append $env:GITHUB_PATH
-      - name: Locate sdist
-        shell: bash
-        run: echo "SDIST=$(ls sdist/*.tar.gz)" >> "$GITHUB_ENV"
-      - uses: pypa/cibuildwheel@v4.2.1
-        with:
-          package-dir: ${{ env.SDIST }}
-          output-dir: wheelhouse
-        env:
-          CIBW_ENVIRONMENT_WINDOWS: CMAKE_ARGS="-DGGML_VULKAN=ON"
-          # vulkan-1.dll comes from the GPU driver; never bundle the loader.
-          CIBW_REPAIR_WHEEL_COMMAND_WINDOWS: >-
-            delvewheel repair --analyze-existing --ignore-existing --exclude vulkan-1.dll -w {dest_dir} {wheel}
-      - uses: actions/upload-artifact@v7
-        with:
-          name: wheels-vulkan-windows
-          path: wheelhouse/*.whl
-
-  # CUDA variant, Turing to Blackwell (SASS) plus PTX for newer GPUs. Several
-  # hours of nvcc per platform, so it runs on tags and on manual dispatch only;
-  # cuda-smoke.yml covers native changes with a single architecture.
-  wheels-cuda:
-    needs: sdist
-    if: github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/')
+        cuda: ${{ fromJSON((inputs.cuda == '12.8' && '["12.8.1"]') || (inputs.cuda == '13.0' && '["13.0.2"]') || '["12.8.1", "13.0.2"]') }}
     uses: ./.github/workflows/cuda.yml
     with:
+      cuda: ${{ matrix.cuda }}
       archs: "75-real;80-real;86-real;89-real;90-real;120"
-      # Manual runs can pick one platform (inputs are empty on tag pushes).
       platforms: ${{ (inputs.target == 'cuda-windows' && '["windows-2022"]') || (inputs.target == 'cuda-linux' && '["ubuntu-24.04"]') || '["ubuntu-24.04", "windows-2022"]' }}

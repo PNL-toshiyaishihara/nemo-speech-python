@@ -1,0 +1,90 @@
+# Tag push v* -> every wheel variant built and tested -> a *draft* GitHub
+# Release with the wheels, the sdist, SHA256SUMS and generated notes. Review
+# the draft and publish it by hand. See RELEASING.md.
+name: release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    outputs:
+      prerelease: ${{ steps.version.outputs.prerelease }}
+    steps:
+      - uses: actions/checkout@v7
+      - name: Check the tag against the package version
+        id: version
+        shell: bash
+        run: |
+          version=$(python3 -c "import re; print(re.search(r'^__version__ = \"([^\"]+)\"', open('nemo_speech/__init__.py', encoding='utf-8').read(), re.M).group(1))")
+          if [ "${GITHUB_REF_NAME}" != "v${version}" ]; then
+            echo "::error::tag ${GITHUB_REF_NAME} does not match __version__ ${version} (expected v${version})"
+            exit 1
+          fi
+          if [[ "$version" =~ (a|b|rc|dev)[0-9]*$ ]]; then prerelease=true; else prerelease=false; fi
+          echo "prerelease=$prerelease" >> "$GITHUB_OUTPUT"
+          echo "Releasing $version (prerelease: $prerelease)"
+
+  sdist:
+    needs: verify
+    uses: ./.github/workflows/sdist.yml
+
+  cpu:
+    needs: sdist
+    uses: ./.github/workflows/cpu.yml
+
+  vulkan:
+    needs: sdist
+    uses: ./.github/workflows/vulkan.yml
+
+  # Keep the toolkit and architecture lists in sync with wheels.yml.
+  cuda:
+    needs: sdist
+    strategy:
+      fail-fast: false
+      matrix:
+        cuda: ["12.8.1", "13.0.2"]
+    uses: ./.github/workflows/cuda.yml
+    with:
+      cuda: ${{ matrix.cuda }}
+      archs: "75-real;80-real;86-real;89-real;90-real;120"
+
+  publish:
+    needs: [verify, sdist, cpu, vulkan, cuda]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0  # previous tags and their submodule pins, for the notes
+      - uses: actions/download-artifact@v8
+        with:
+          path: dist
+          merge-multiple: true
+      - name: Checksums
+        working-directory: dist
+        run: |
+          sha256sum -- * > SHA256SUMS
+          cat SHA256SUMS
+      - name: Release notes
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 scripts/release_notes.py --tag "${GITHUB_REF_NAME}" --dist dist > notes.md
+      - name: Create the draft release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PRERELEASE: ${{ needs.verify.outputs.prerelease }}
+        run: |
+          args=(--draft --verify-tag --title "nemo-speech-python ${GITHUB_REF_NAME}" --notes-file notes.md)
+          if [ "$PRERELEASE" = "true" ]; then args+=(--prerelease); fi
+          gh release create "${GITHUB_REF_NAME}" "${args[@]}" dist/*

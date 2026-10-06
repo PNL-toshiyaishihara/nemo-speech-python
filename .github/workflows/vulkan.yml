@@ -1,0 +1,43 @@
+# Reusable: the Windows Vulkan wheel (local version label +vulkan) from the
+# sdist artifact of the calling run.
+name: vulkan
+
+on:
+  workflow_call:
+
+jobs:
+  wheel:
+    runs-on: windows-2022
+    env:
+      VULKAN_SDK_VERSION: "1.4.341.1"
+      CIBW_CONFIG_SETTINGS_WINDOWS: build-dir=C:/b
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          name: sdist
+          path: sdist
+      - name: Install the Vulkan SDK (glslc and the loader)
+        shell: pwsh
+        run: |
+          $installer = "$env:RUNNER_TEMP\vulkan-sdk.exe"
+          Invoke-WebRequest "https://sdk.lunarg.com/sdk/download/$env:VULKAN_SDK_VERSION/windows/vulkansdk-windows-X64-$env:VULKAN_SDK_VERSION.exe" -OutFile $installer
+          & $installer --root "C:\VulkanSDK\$env:VULKAN_SDK_VERSION" --accept-licenses --default-answer --confirm-command install
+          "VULKAN_SDK=C:\VulkanSDK\$env:VULKAN_SDK_VERSION" | Out-File -Append $env:GITHUB_ENV
+          "C:\VulkanSDK\$env:VULKAN_SDK_VERSION\Bin" | Out-File -Append $env:GITHUB_PATH
+      - name: Locate sdist
+        shell: bash
+        run: echo "SDIST=$(ls sdist/*.tar.gz)" >> "$GITHUB_ENV"
+      - uses: pypa/cibuildwheel@v4.2.1
+        with:
+          package-dir: ${{ env.SDIST }}
+          output-dir: wheelhouse
+        env:
+          # Enables GGML_VULKAN and the +vulkan label (pyproject.toml overrides).
+          CIBW_ENVIRONMENT_WINDOWS: NEMO_SPEECH_VARIANT=vulkan
+          # vulkan-1.dll comes from the GPU driver; never bundle the loader.
+          CIBW_REPAIR_WHEEL_COMMAND_WINDOWS: >-
+            delvewheel repair --analyze-existing --ignore-existing --exclude vulkan-1.dll -w {dest_dir} {wheel}
+      - uses: actions/upload-artifact@v7
+        with:
+          name: wheels-vulkan-windows-2022
+          path: wheelhouse/*.whl

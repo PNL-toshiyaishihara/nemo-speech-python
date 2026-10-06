@@ -1,0 +1,35 @@
+# Reusable: CPU wheels (Linux x86_64/aarch64, Windows x64, macOS arm64 with
+# Metal) from the sdist artifact of the calling run. Each wheel is built once
+# and tested on every Python in pyproject.toml's cibuildwheel `build` list.
+name: cpu
+
+on:
+  workflow_call:
+
+jobs:
+  wheel:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, ubuntu-24.04-arm, windows-2022, macos-14]
+    runs-on: ${{ matrix.os }}
+    env:
+      # cibuildwheel unpacks the sdist under %TEMP%; nested ExternalProject
+      # trees would push MSBuild paths past MAX_PATH there.
+      CIBW_CONFIG_SETTINGS_WINDOWS: build-dir=C:/b
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          name: sdist
+          path: sdist
+      - name: Locate sdist
+        shell: bash
+        run: echo "SDIST=$(ls sdist/*.tar.gz)" >> "$GITHUB_ENV"
+      - uses: pypa/cibuildwheel@v4.2.1
+        with:
+          package-dir: ${{ env.SDIST }}
+          output-dir: wheelhouse
+      - uses: actions/upload-artifact@v7
+        with:
+          name: wheels-cpu-${{ matrix.os }}
+          path: wheelhouse/*.whl

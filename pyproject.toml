@@ -9,10 +9,15 @@ description = "Unofficial Python bindings for NeMo-Speech.cpp (ctypes over the s
 readme = "README.md"
 license = "Apache-2.0"
 license-files = ["LICENSE", "NOTICE"]
-requires-python = ">=3.9"
+requires-python = ">=3.10"
 dependencies = ["numpy>=1.21"]
 classifiers = [
     "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
     "Programming Language :: C++",
     "Topic :: Multimedia :: Sound/Audio :: Speech",
 ]
@@ -52,20 +57,53 @@ sdist.exclude = [
     "vendor/sentencepiece/data/",
     "vendor/sentencepiece/python/",
 ]
-# Upstream's patch series also edits this tool, so it must stay applicable.
-sdist.include = ["vendor/NeMo-Speech.cpp/llama.cpp/tools/quantize/"]
+sdist.include = [
+    # Upstream's patch series also edits this tool, so it must stay applicable.
+    "vendor/NeMo-Speech.cpp/llama.cpp/tools/quantize/",
+    # Source revisions recorded by sdist.yml (git-ignored, but the sdist needs it).
+    "vendor/revisions.json",
+]
 
 [tool.scikit-build.metadata.version]
 provider = "scikit_build_core.metadata.regex"
 input = "nemo_speech/__init__.py"
+result = "{value}"
+
+# Build variants. NEMO_SPEECH_VARIANT selects the GPU backend and a PEP 440
+# local version label, so the variants of one release get distinct wheel
+# filenames (the CPU wheel has none). CUDA architectures still come from
+# CMAKE_ARGS; the build checks that the toolkit matches the label. An override
+# replaces the whole metadata.version table, hence the repeated provider/input.
+[[tool.scikit-build.overrides]]
+if.env.NEMO_SPEECH_VARIANT = "vulkan"
+metadata.version.provider = "scikit_build_core.metadata.regex"
+metadata.version.input = "nemo_speech/__init__.py"
+metadata.version.result = "{value}+vulkan"
+cmake.define.GGML_VULKAN = "ON"
+
+[[tool.scikit-build.overrides]]
+if.env.NEMO_SPEECH_VARIANT = "cu128"
+metadata.version.provider = "scikit_build_core.metadata.regex"
+metadata.version.input = "nemo_speech/__init__.py"
+metadata.version.result = "{value}+cu128"
+cmake.define.GGML_CUDA = "ON"
+
+[[tool.scikit-build.overrides]]
+if.env.NEMO_SPEECH_VARIANT = "cu130"
+metadata.version.provider = "scikit_build_core.metadata.regex"
+metadata.version.input = "nemo_speech/__init__.py"
+metadata.version.result = "{value}+cu130"
+cmake.define.GGML_CUDA = "ON"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 
 [tool.cibuildwheel]
 # The wheel is py3-none-<platform>, so one build per platform serves every
-# Python 3; cibuildwheel tests it with the interpreter it was built with.
-build = "cp312-*"
+# Python 3. cibuildwheel builds it for the first entry and, finding it
+# compatible, only installs and tests it for the others: one build, tested on
+# Python 3.10 to 3.14.
+build = "cp310-* cp311-* cp312-* cp313-* cp314-*"
 skip = "*-musllinux_* *_i686 *-win32"
 build-verbosity = 1
 test-requires = ["pytest"]
