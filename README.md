@@ -307,11 +307,13 @@ and worked around here):
   represent (for example Japanese characters on a code-page-1252 system).
   Copy `nemo_speech/data/open_jtalk_dic` to a path it can represent and set
   `MAGPIE_OPENJTALK_DIC_DIR` to that copy.
-- **Visual Studio generator and Open JTalk.** Upstream adds
-  `$<$<COMPILE_LANGUAGE:CXX>:/FIfunctional>` to the MeCab library; Visual
-  Studio generators apply target-wide options to all of a target's sources,
-  so its C files fail with STL1003. `cmake/project_include.cmake` moves the
-  option onto the C++ sources.
+- **Open JTalk's MeCab and C++17.** MeCab uses `std::binary_function`,
+  which C++17 removed. Upstream restores it only for MSVC, through
+  `$<$<COMPILE_LANGUAGE:CXX>:/FIfunctional>`, which Visual Studio generators
+  also apply to the target's C files (they fail with STL1003); libc++ on
+  macOS has no `binary_function` at all. `cmake/project_include.cmake` moves
+  the option onto the C++ sources and, on macOS, defines libc++'s
+  `_LIBCPP_ENABLE_CXX17_REMOVED_UNARY_BINARY_FUNCTION` for MeCab.
 - **`interim_results` is ignored by the C ABI.** Only upstream's gRPC server
   filters partial results; `RecognitionStream` drops them itself when
   `interim_results=False`.

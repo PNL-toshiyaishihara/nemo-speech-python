@@ -9,29 +9,36 @@ if(MSVC)
     add_compile_definitions(_DISABLE_CONSTEXPR_MUTEX_CONSTRUCTOR)
 endif()
 
-# Upstream force-includes <functional> into OpenJTalk's MeCab sources on MSVC
-# with $<$<COMPILE_LANGUAGE:CXX>:/FIfunctional>. Visual Studio generators
-# evaluate target-wide options once for all of a target's sources, so its C
-# sources get the option too and fail with STL1003. Move it onto the C++
-# sources, once every target of the project exists.
-function(nsp_openjtalk_cxx_only_force_include)
+# Open JTalk's MeCab (the Japanese TTS tokenizer) uses std::binary_function,
+# which C++17 removed. Upstream restores it for MSVC only, and in a way that
+# breaks the Visual Studio generator. Fixed up once every target exists.
+function(nsp_fix_openjtalk_frontend)
     set(target nemo_speech_openjtalk_frontend)
     if(NOT TARGET ${target})
         return()
     endif()
-    get_target_property(options ${target} COMPILE_OPTIONS)
-    if(NOT options MATCHES "/FIfunctional")
-        return()
+    # libc++ (macOS) keeps it behind an opt-in macro.
+    if(APPLE)
+        set_property(TARGET ${target} APPEND PROPERTY
+            COMPILE_DEFINITIONS _LIBCPP_ENABLE_CXX17_REMOVED_UNARY_BINARY_FUNCTION)
     endif()
-    list(FILTER options EXCLUDE REGEX "/FIfunctional")
-    set_property(TARGET ${target} PROPERTY COMPILE_OPTIONS "${options}")
-    get_target_property(sources ${target} SOURCES)
-    list(FILTER sources INCLUDE REGEX "\\.cpp$")
-    set_property(SOURCE ${sources} TARGET_DIRECTORY ${target}
-        APPEND PROPERTY COMPILE_OPTIONS /FIfunctional)
+    # Upstream force-includes <functional> with
+    # $<$<COMPILE_LANGUAGE:CXX>:/FIfunctional>. Visual Studio generators
+    # evaluate target-wide options once for all of a target's sources, so the C
+    # sources get it too and fail with STL1003. Move it onto the C++ sources.
+    if(CMAKE_GENERATOR MATCHES "^Visual Studio")
+        get_target_property(options ${target} COMPILE_OPTIONS)
+        if(options MATCHES "/FIfunctional")
+            list(FILTER options EXCLUDE REGEX "/FIfunctional")
+            set_property(TARGET ${target} PROPERTY COMPILE_OPTIONS "${options}")
+            get_target_property(sources ${target} SOURCES)
+            list(FILTER sources INCLUDE REGEX "\\.cpp$")
+            set_property(SOURCE ${sources} TARGET_DIRECTORY ${target}
+                APPEND PROPERTY COMPILE_OPTIONS /FIfunctional)
+        endif()
+    endif()
 endfunction()
 
-if(MSVC AND CMAKE_GENERATOR MATCHES "^Visual Studio"
-   AND CMAKE_CURRENT_SOURCE_DIR STREQUAL CMAKE_SOURCE_DIR)
-    cmake_language(DEFER CALL nsp_openjtalk_cxx_only_force_include)
+if(CMAKE_CURRENT_SOURCE_DIR STREQUAL CMAKE_SOURCE_DIR)
+    cmake_language(DEFER CALL nsp_fix_openjtalk_frontend)
 endif()
