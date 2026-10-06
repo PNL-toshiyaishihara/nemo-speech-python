@@ -220,7 +220,10 @@ class Recognizer:
         max_batch_size: Upper bound for ``batching``; library default if None.
         streaming: Advanced: raw ``nemo_speech_asr_streaming_config``. Every
             field of it is applied, so fill all of them.
-        decoder: Advanced: raw ``nemo_speech_asr_decoder_config``.
+        decoder: Advanced: raw ``nemo_speech_asr_decoder_config``. The C ABI
+            has no ``_default()`` for it, and ``lm_weight`` and
+            ``word_insertion_score`` are applied even when 0, so set them
+            explicitly with an LM (the library defaults are 0.8 and 1.0).
     """
 
     def __init__(
@@ -416,7 +419,10 @@ class Recognizer:
         speaker_diarization: bool = False,
         request_id: Optional[str] = None,
     ) -> "RecognitionStream":
-        """Start a streaming recognition. Drive it from a single thread."""
+        """Start a streaming recognition. Drive it from a single thread.
+
+        With ``interim_results=False`` the stream returns final results only.
+        """
         options = _RequestOptions(
             language=language,
             word_timestamps=word_timestamps,
@@ -439,7 +445,7 @@ class Recognizer:
             native = NativeHandle(stream, C.nemo_speech_asr_stream_close, "RecognitionStream")
             # Closing the recognizer closes the stream first.
             self._native.adopt(native)
-        return RecognitionStream(self, native)
+        return RecognitionStream(self, native, interim_results)
 
 
 class RecognitionStream:
@@ -450,12 +456,18 @@ class RecognitionStream:
     including the end-of-stream final.
     """
 
-    def __init__(self, recognizer: Recognizer, native: NativeHandle) -> None:
+    def __init__(
+        self, recognizer: Recognizer, native: NativeHandle, interim_results: bool = True
+    ) -> None:
         # The recognizer must outlive the stream; it also closes the stream
         # before destroying itself (NativeHandle.adopt).
         self._recognizer = recognizer
         self._native = native
         self._sample_rate: Optional[int] = None
+        # The C ABI accepts recognition_options.interim_results but never reads
+        # it (upstream filters interim results only in its gRPC server), so the
+        # filtering happens here.
+        self._interim_results = interim_results
 
     def _drain(self, handle: ctypes.c_void_p) -> List[RecognitionResult]:
         results = []
@@ -464,7 +476,9 @@ class RecognitionStream:
             _check(C.nemo_speech_asr_stream_next(handle, ctypes.byref(result)))
             if not result:
                 return results
-            results.append(_take_result(result))
+            taken = _take_result(result)
+            if taken.is_final or self._interim_results:
+                results.append(taken)
 
     def push(self, audio: "np.typing.ArrayLike", sample_rate: int = 0) -> List[RecognitionResult]:
         """Add audio and return the results it produced (possibly none).

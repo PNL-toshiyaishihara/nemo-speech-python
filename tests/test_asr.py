@@ -56,6 +56,24 @@ def test_streaming(recognizer, jfk_wav):
     assert JFK_PHRASE in _normalized(final_text)
 
 
+def _stream_results(recognizer, samples, rate, **options):
+    results = []
+    with recognizer.stream(**options) as stream:
+        for start in range(0, samples.size, rate // 2):
+            results += stream.push(samples[start : start + rate // 2], rate)
+        results += stream.finish()
+    return results
+
+
+def test_streaming_without_interim_results(recognizer, jfk_wav):
+    samples, rate = load_wav(jfk_wav)
+    with_interim = _stream_results(recognizer, samples, rate)
+    assert any(not r.is_final for r in with_interim)  # the default includes partials
+    finals = _stream_results(recognizer, samples, rate, interim_results=False)
+    assert finals and all(r.is_final for r in finals)
+    assert [r.text for r in finals] == [r.text for r in with_interim if r.is_final]
+
+
 def test_concurrent_transcribe(recognizer, jfk_wav):
     samples, rate = load_wav(jfk_wav)
     expected = recognizer.transcribe(samples, rate).text
