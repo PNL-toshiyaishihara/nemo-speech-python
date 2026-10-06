@@ -1,11 +1,12 @@
 """MagpieTTS synthesis; skipped unless the model, codec and tokenizer are cached."""
 
 import re
+import threading
 
 import numpy as np
 import pytest
 
-from nemo_speech import load_wav
+from nemo_speech import Synthesizer, load_wav
 
 TEXT = "Hello from the Python bindings."
 
@@ -49,6 +50,36 @@ def test_callback_cancels(synthesizer):
     )
     assert result.cancelled
     assert result.duration < 2
+
+
+def test_cancel_keeps_requested_sample_rate(synthesizer):
+    # A cancelled synthesis leaves the stats unfilled; the chunks are still at
+    # the requested rate.
+    result = synthesizer.synthesize(
+        "This sentence is long enough to produce several chunks of audio before it ends.",
+        sample_rate=16000,
+        on_audio=lambda chunk: False,
+    )
+    assert result.cancelled
+    assert result.sample_rate == 16000
+
+
+def test_close_waits_for_running_synthesis(tts_paths):
+    tts = Synthesizer(tts_paths["tts"], tts_paths["codec"], tokenizer_dir=tts_paths["tokenizer"])
+    started = threading.Event()
+    results = []
+    worker = threading.Thread(
+        target=lambda: results.append(tts.synthesize(TEXT, on_audio=lambda chunk: started.set()))
+    )
+    worker.start()
+    assert started.wait(120)
+    tts.close()  # waits for the synthesis instead of destroying the model under it
+    worker.join()
+    assert results and results[0].audio.size > 0
+    with pytest.raises(RuntimeError):
+        tts.synthesize(TEXT)
+    with pytest.raises(RuntimeError):
+        tts.sample_rate
 
 
 def test_callback_exception_propagates(synthesizer):
