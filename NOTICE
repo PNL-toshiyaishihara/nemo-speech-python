@@ -23,7 +23,10 @@ patches/llama.cpp/ contains modifications to llama.cpp
 authors, licensed under the MIT License.
 
 Binary distributions (wheels) bundle NeMo-Speech.cpp, ggml/llama.cpp,
-SentencePiece and, depending on the platform, compiler runtime libraries:
+SentencePiece, Open JTalk with MeCab and the NAIST Japanese Dictionary
+(compiled), cppjieba with limonp, NeMo-Speech.cpp's Mandarin G2P tables
+(generated from Jieba, pypinyin and pypinyin-dict) and, depending on the
+platform, compiler runtime libraries:
 Linux wheels bundle libgomp (GCC's OpenMP runtime; GPL-3.0 with the GCC
 Runtime Library Exception 3.1), and Windows wheels the Microsoft Visual C++
 runtime (Visual Studio Distributable Code). Their license texts and notices
