@@ -19,7 +19,7 @@ from __future__ import annotations
 import importlib
 from typing import Any
 
-__version__ = "0.1.0rc1"
+__version__ = "0.1.0rc2.dev0"
 
 from ._common import NemoSpeechError
 from .audio import load_wav, save_wav
