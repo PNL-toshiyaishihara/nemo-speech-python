@@ -45,6 +45,11 @@ function(nsp_write_build_info out_file)
             list(GET entry 0 name)
             list(GET entry 1 dir)
             nsp_source_revision("${dir}" revision)
+            if(revision STREQUAL "{}")
+                message(WARNING
+                    "No revision for ${name}: ${dir} is not a git checkout and "
+                    "vendor/revisions.json is missing; build_info() will lack it")
+            endif()
             string(JSON sources SET "${sources}" "${name}" "${revision}")
         endforeach()
     endif()
