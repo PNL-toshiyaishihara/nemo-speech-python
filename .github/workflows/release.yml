@@ -21,6 +21,15 @@ jobs:
       prerelease: ${{ steps.version.outputs.prerelease }}
     steps:
       - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0  # to check that the tag is on main
+      - name: Check that the tag points at main
+        shell: bash
+        run: |
+          if ! git merge-base --is-ancestor "$GITHUB_SHA" origin/main; then
+            echo "::error::${GITHUB_REF_NAME} (${GITHUB_SHA}) is not a commit on main; tag a merge commit of main"
+            exit 1
+          fi
       - name: Check the tag against the package version
         id: version
         shell: bash
@@ -71,6 +80,42 @@ jobs:
         with:
           path: dist
           merge-multiple: true
+      - name: Check the assets
+        working-directory: dist
+        shell: bash
+        run: |
+          # One wheel per variant and platform (see RELEASING.md) and the sdist.
+          expected=(
+            '-py3-none-manylinux_*_x86_64.whl'
+            '-py3-none-manylinux_*_aarch64.whl'
+            '-py3-none-win_amd64.whl'
+            '-py3-none-macosx_*_arm64.whl'
+            '+vulkan-py3-none-win_amd64.whl'
+            '+cu128-py3-none-manylinux_*_x86_64.whl'
+            '+cu128-py3-none-win_amd64.whl'
+            '+cu130-py3-none-manylinux_*_x86_64.whl'
+            '+cu130-py3-none-win_amd64.whl'
+          )
+          version="${GITHUB_REF_NAME#v}"
+          status=0
+          for suffix in "${expected[@]}"; do
+            mapfile -t found < <(compgen -G "nemo_speech-${version}${suffix}" || true)
+            if [ "${#found[@]}" -ne 1 ]; then
+              echo "::error::expected one nemo_speech-${version}${suffix}, found ${#found[@]}"
+              status=1
+            fi
+          done
+          if [ ! -f "nemo_speech-${version}.tar.gz" ]; then
+            echo "::error::missing the sdist nemo_speech-${version}.tar.gz"
+            status=1
+          fi
+          count=$(ls | wc -l)
+          if [ "$count" -ne $(( ${#expected[@]} + 1 )) ]; then
+            echo "::error::expected $(( ${#expected[@]} + 1 )) files, found ${count}:"
+            ls
+            status=1
+          fi
+          exit $status
       - name: Checksums
         working-directory: dist
         run: |
@@ -85,6 +130,20 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           PRERELEASE: ${{ needs.verify.outputs.prerelease }}
         run: |
+          # A published release is never replaced. Drafts left by an earlier
+          # run for this tag (re-tagged after a failure, or re-run) are
+          # deleted, so only one draft can be published.
+          releases=$(gh api "repos/${GITHUB_REPOSITORY}/releases" --paginate \
+            --jq ".[] | select(.tag_name == \"${GITHUB_REF_NAME}\") | \"\(.id) \(.draft)\"")
+          while read -r id draft; do
+            [ -n "$id" ] || continue
+            if [ "$draft" != "true" ]; then
+              echo "::error::${GITHUB_REF_NAME} is already published; release a new version instead"
+              exit 1
+            fi
+            echo "Deleting the earlier draft ${id}"
+            gh api -X DELETE "repos/${GITHUB_REPOSITORY}/releases/${id}"
+          done <<< "$releases"
           args=(--draft --verify-tag --title "nemo-speech-python ${GITHUB_REF_NAME}" --notes-file notes.md)
           if [ "$PRERELEASE" = "true" ]; then args+=(--prerelease); fi
           gh release create "${GITHUB_REF_NAME}" "${args[@]}" dist/*

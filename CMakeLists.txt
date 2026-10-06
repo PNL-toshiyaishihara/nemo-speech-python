@@ -57,11 +57,31 @@ endif()
 # ---- Build variant ----
 # NEMO_SPEECH_VARIANT (environment; see pyproject.toml) names a published
 # variant and gives it a local version label. pyproject.toml has already turned
-# on its backend; here unknown labels are refused so no wheel is mislabelled.
+# on its backend; here everything that would mislabel a wheel is refused: a
+# variant without a pyproject.toml override (it would build an unlabelled CPU
+# wheel) and a GPU backend without its variant (a GPU wheel versioned like the
+# CPU one). Keep the list in sync with the overrides in pyproject.toml.
 set(NSP_VARIANT "$ENV{NEMO_SPEECH_VARIANT}")
-if(NOT NSP_VARIANT MATCHES "^(|vulkan|cu[0-9]+)$")
+set(NSP_KNOWN_VARIANTS vulkan cu128 cu130)
+list(JOIN NSP_KNOWN_VARIANTS ", " _nsp_known)
+if(NSP_VARIANT AND NOT NSP_VARIANT IN_LIST NSP_KNOWN_VARIANTS)
     message(FATAL_ERROR
-        "unknown NEMO_SPEECH_VARIANT '${NSP_VARIANT}' (expected vulkan, cu<major><minor> or unset)")
+        "unknown NEMO_SPEECH_VARIANT '${NSP_VARIANT}' (expected one of: "
+        "${_nsp_known}, or unset for the CPU wheel). A new variant needs an "
+        "override in pyproject.toml and an entry in NSP_KNOWN_VARIANTS.")
+endif()
+if(GGML_VULKAN AND NOT NSP_VARIANT STREQUAL "vulkan")
+    message(FATAL_ERROR
+        "GGML_VULKAN=ON needs NEMO_SPEECH_VARIANT=vulkan, which also labels the wheel")
+endif()
+if(GGML_CUDA AND NOT NSP_VARIANT MATCHES "^cu")
+    message(FATAL_ERROR
+        "GGML_CUDA=ON needs NEMO_SPEECH_VARIANT=cu<major><minor> matching the toolkit "
+        "(${_nsp_known}), which also labels the wheel")
+endif()
+if((NSP_VARIANT STREQUAL "vulkan" AND NOT GGML_VULKAN) OR
+   (NSP_VARIANT MATCHES "^cu" AND NOT GGML_CUDA))
+    message(FATAL_ERROR "NEMO_SPEECH_VARIANT=${NSP_VARIANT}, but its GPU backend is off")
 endif()
 if(NSP_VARIANT)
     set(NSP_VARIANT_NAME "${NSP_VARIANT}")
@@ -91,15 +111,13 @@ if(GGML_CUDA)
     # The bundled CUDA libraries are NVIDIA redistributables under the CUDA
     # Toolkit EULA (not Apache-2.0); ship the EULA with them.
     find_package(CUDAToolkit REQUIRED)
-    if(NSP_VARIANT MATCHES "^cu([0-9]+)([0-9])$")
-        set(_nsp_want "${CMAKE_MATCH_1}.${CMAKE_MATCH_2}")
-        if(NOT "${CUDAToolkit_VERSION_MAJOR}.${CUDAToolkit_VERSION_MINOR}" STREQUAL _nsp_want)
-            message(FATAL_ERROR
-                "NEMO_SPEECH_VARIANT=${NSP_VARIANT} needs CUDA ${_nsp_want}, "
-                "found CUDA ${CUDAToolkit_VERSION}")
-        endif()
-    elseif(NSP_VARIANT)
-        message(FATAL_ERROR "NEMO_SPEECH_VARIANT=${NSP_VARIANT} cannot be built with GGML_CUDA")
+    # The variant is cu<major><minor> here (checked above); it must name this toolkit.
+    string(REGEX MATCH "^cu([0-9]+)([0-9])$" _nsp_match "${NSP_VARIANT}")
+    set(_nsp_want "${CMAKE_MATCH_1}.${CMAKE_MATCH_2}")
+    if(NOT "${CUDAToolkit_VERSION_MAJOR}.${CUDAToolkit_VERSION_MINOR}" STREQUAL _nsp_want)
+        message(FATAL_ERROR
+            "NEMO_SPEECH_VARIANT=${NSP_VARIANT} needs CUDA ${_nsp_want}, "
+            "found CUDA ${CUDAToolkit_VERSION}")
     endif()
     if(CUDAToolkit_LIBRARY_ROOT)
         set(_nsp_cuda_root "${CUDAToolkit_LIBRARY_ROOT}")
