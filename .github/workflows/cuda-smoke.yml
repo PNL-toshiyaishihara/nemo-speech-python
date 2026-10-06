@@ -1,44 +1,55 @@
 # CUDA smoke build: one architecture (sm_86) per CUDA release, Linux and
-# Windows, built, repaired and (Linux) tested against the driver stub. Runs
+# Windows, built, repaired and (Linux) tested against the driver stub. Builds
 # only when a change can affect the native build; Python-only changes cannot
 # break it because the bindings use ctypes. The full multi-architecture build
 # runs in release.yml (tags) and on manual wheels.yml runs.
+#
+# The workflow itself runs for every push to main and every PR, so that its
+# final `cuda-smoke` job can be a required check: it passes when the build
+# passed or was not needed, and fails otherwise. (A path filter on the
+# trigger would leave the required check pending forever on other PRs.)
 name: cuda-smoke
 
-# Keep the two path lists identical.
 on:
   push:
     branches: [main]
-    paths:
-      - "vendor/**"
-      - "CMakeLists.txt"
-      - "cmake/**"
-      - "patches/**"
-      - "pyproject.toml"
-      - "nemo_speech/_loader.py"
-      - "scripts/source_revisions.py"
-      - ".github/workflows/sdist.yml"
-      - ".github/workflows/cuda.yml"
-      - ".github/workflows/cuda-smoke.yml"
   pull_request:
-    paths:
-      - "vendor/**"
-      - "CMakeLists.txt"
-      - "cmake/**"
-      - "patches/**"
-      - "pyproject.toml"
-      - "nemo_speech/_loader.py"
-      - "scripts/source_revisions.py"
-      - ".github/workflows/sdist.yml"
-      - ".github/workflows/cuda.yml"
-      - ".github/workflows/cuda-smoke.yml"
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
+  changes:
+    runs-on: ubuntu-24.04
+    outputs:
+      native: ${{ steps.filter.outputs.native }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - name: Did native build inputs change?
+        id: filter
+        shell: bash
+        env:
+          # The PR's base, or the previous tip of main.
+          BASE: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.before }}
+        run: |
+          native_inputs='^(vendor/|CMakeLists\.txt$|cmake/|patches/|licenses/|pyproject\.toml$|nemo_speech/_loader\.py$|scripts/source_revisions\.py$|\.github/workflows/(sdist|cuda|cuda-smoke)\.yml$)'
+          if ! git cat-file -e "${BASE}^{commit}" 2>/dev/null; then
+            echo "Base ${BASE:-none} unknown; building"
+            native=true
+          elif git diff --name-only "$BASE" "$GITHUB_SHA" | grep -qE "$native_inputs"; then
+            native=true
+          else
+            native=false
+          fi
+          git diff --name-only "$BASE" "$GITHUB_SHA" 2>/dev/null | sed 's/^/  /' || true
+          echo "native=$native" | tee -a "$GITHUB_OUTPUT"
+
   sdist:
+    needs: changes
+    if: needs.changes.outputs.native == 'true'
     uses: ./.github/workflows/sdist.yml
 
   cuda:
@@ -52,3 +63,25 @@ jobs:
       cuda: ${{ matrix.cuda }}
       archs: "86-real"
       upload: false
+
+  # The required check. Skipped builds pass; failed or cancelled ones fail.
+  cuda-smoke:
+    needs: [changes, sdist, cuda]
+    if: always()
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Result
+        shell: bash
+        env:
+          CHANGES: ${{ needs.changes.result }}
+          SDIST: ${{ needs.sdist.result }}
+          CUDA: ${{ needs.cuda.result }}
+        run: |
+          echo "changes=$CHANGES sdist=$SDIST cuda=$CUDA"
+          [ "$CHANGES" = success ] || exit 1
+          for result in "$SDIST" "$CUDA"; do
+            case "$result" in
+              success|skipped) ;;
+              *) echo "::error::the CUDA smoke build did not succeed ($result)"; exit 1 ;;
+            esac
+          done
