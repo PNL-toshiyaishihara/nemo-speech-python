@@ -45,7 +45,29 @@ _LAZY = {
     "tts_version": ("tts", "version"),
 }
 
-__all__ = ["NemoSpeechError", "load_wav", "save_wav", *_LAZY]
+__all__ = ["NemoSpeechError", "build_info", "load_wav", "save_wav", *_LAZY]
+
+
+def build_info() -> dict:
+    """How this installation was built.
+
+    Returns the package version, the variant (``default``, ``vulkan``,
+    ``cu128``, ...), the enabled GPU backends and components, CUDA toolkit
+    and architectures for CUDA builds, and the commit of every vendored
+    source (NeMo-Speech.cpp, llama.cpp, SentencePiece). Include it in bug
+    reports.
+    """
+    import json
+    import pathlib
+
+    path = pathlib.Path(__file__).resolve().parent / "_build_info.json"
+    try:
+        with open(path, encoding="utf-8") as f:
+            return json.load(f)
+    except FileNotFoundError:
+        raise FileNotFoundError(
+            f"{path} is missing; build_info() needs an installed package, not the source tree"
+        ) from None
 
 
 def __getattr__(name: str) -> Any:

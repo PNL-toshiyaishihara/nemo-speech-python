@@ -54,6 +54,21 @@ if(APPLE)
     set(GGML_OPENMP               OFF CACHE BOOL "ggml: use OpenMP")
 endif()
 
+# ---- Build variant ----
+# NEMO_SPEECH_VARIANT (environment; see pyproject.toml) names a published
+# variant and gives it a local version label. pyproject.toml has already turned
+# on its backend; here unknown labels are refused so no wheel is mislabelled.
+set(NSP_VARIANT "$ENV{NEMO_SPEECH_VARIANT}")
+if(NOT NSP_VARIANT MATCHES "^(|vulkan|cu[0-9]+)$")
+    message(FATAL_ERROR
+        "unknown NEMO_SPEECH_VARIANT '${NSP_VARIANT}' (expected vulkan, cu<major><minor> or unset)")
+endif()
+if(NSP_VARIANT)
+    set(NSP_VARIANT_NAME "${NSP_VARIANT}")
+else()
+    set(NSP_VARIANT_NAME default)
+endif()
+
 # ---- CUDA ----
 # CUDA wheels bundle the real cuBLAS/cuBLASLt and the CUDA runtime (the repair
 # step copies them in), so a wheel needs nothing beyond the NVIDIA driver.
@@ -76,7 +91,21 @@ if(GGML_CUDA)
     # The bundled CUDA libraries are NVIDIA redistributables under the CUDA
     # Toolkit EULA (not Apache-2.0); ship the EULA with them.
     find_package(CUDAToolkit REQUIRED)
-    get_filename_component(_nsp_cuda_root "${CUDAToolkit_BIN_DIR}" DIRECTORY)
+    if(NSP_VARIANT MATCHES "^cu([0-9]+)([0-9])$")
+        set(_nsp_want "${CMAKE_MATCH_1}.${CMAKE_MATCH_2}")
+        if(NOT "${CUDAToolkit_VERSION_MAJOR}.${CUDAToolkit_VERSION_MINOR}" STREQUAL _nsp_want)
+            message(FATAL_ERROR
+                "NEMO_SPEECH_VARIANT=${NSP_VARIANT} needs CUDA ${_nsp_want}, "
+                "found CUDA ${CUDAToolkit_VERSION}")
+        endif()
+    elseif(NSP_VARIANT)
+        message(FATAL_ERROR "NEMO_SPEECH_VARIANT=${NSP_VARIANT} cannot be built with GGML_CUDA")
+    endif()
+    if(CUDAToolkit_LIBRARY_ROOT)
+        set(_nsp_cuda_root "${CUDAToolkit_LIBRARY_ROOT}")
+    else()
+        get_filename_component(_nsp_cuda_root "${CUDAToolkit_BIN_DIR}" DIRECTORY)
+    endif()
     set(NSP_CUDA_EULA "")
     # Windows installs and the cuda-documentation RPM put it in the toolkit
     # root; the per-library RPMs ship it under /usr/share/licenses.
@@ -236,6 +265,11 @@ if(NSP_CUDA_EULA)
         DESTINATION "${NSP_PACKAGE_DIR}/licenses/third_party/cuda"
         RENAME EULA.txt)
 endif()
+
+# Build description for nemo_speech.build_info().
+include(cmake/build_info.cmake)
+nsp_write_build_info("${CMAKE_BINARY_DIR}/_build_info.json")
+install(FILES "${CMAKE_BINARY_DIR}/_build_info.json" DESTINATION "${NSP_PACKAGE_DIR}")
 
 # Model catalog used by nemo_speech.models (same file the upstream CLI reads).
 install(FILES "${NSP_UPSTREAM_DIR}/models/index.json"

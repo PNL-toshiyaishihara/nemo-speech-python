@@ -13,6 +13,13 @@ jobs:
         run: |
           git submodule update --init vendor/NeMo-Speech.cpp vendor/sentencepiece
           git -C vendor/NeMo-Speech.cpp submodule update --init --depth 1 llama.cpp
+          # Tags make the recorded revisions readable ("v0.2.0", not a hash).
+          git -C vendor/NeMo-Speech.cpp fetch --quiet --tags origin
+          git -C vendor/sentencepiece fetch --quiet --tags origin
+      - name: Record the vendored source revisions
+        # An sdist has no git metadata; cmake/build_info.cmake embeds this
+        # file in every wheel built from it (nemo_speech.build_info()).
+        run: python3 scripts/source_revisions.py > vendor/revisions.json
       - name: Build sdist
         run: pipx run build --sdist
       - uses: actions/upload-artifact@v7

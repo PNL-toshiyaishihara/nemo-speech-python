@@ -1,15 +1,19 @@
-# Reusable: CUDA 12.8 wheels (Linux x86_64 and Windows x64) from the sdist
-# artifact of the calling run.
+# Reusable: CUDA wheels (Linux x86_64 and Windows x64) for one CUDA release,
+# from the sdist artifact of the calling run.
 #
-# The repair step bundles the CUDA runtime, cuBLAS and cuBLASLt so a wheel needs
-# only the NVIDIA driver (libcuda.so.1 / nvcuda.dll), which is never bundled.
-# CUDA wheels share the distribution name with the CPU wheel and belong on a
-# separate index.
+# The local version label follows the toolkit (+cu128 for 12.8, +cu130 for
+# 13.0). The repair step bundles the CUDA runtime, cuBLAS and cuBLASLt so a
+# wheel needs only the NVIDIA driver (libcuda.so.1 / nvcuda.dll), which is
+# never bundled.
 name: cuda
 
 on:
   workflow_call:
     inputs:
+      cuda:
+        description: CUDA toolkit version, major.minor.patch (Windows installer)
+        type: string
+        required: true
       archs:
         description: CMAKE_CUDA_ARCHITECTURES
         type: string
@@ -19,7 +23,7 @@ on:
         type: string
         default: '["ubuntu-24.04", "windows-2022"]'
       upload:
-        description: Upload the wheels as artifacts (about 600 MB each)
+        description: Upload the wheels as artifacts (about 700 MB each)
         type: boolean
         default: true
 
@@ -33,29 +37,56 @@ jobs:
     timeout-minutes: 360
     env:
       # The caller's workflow-level env does not reach a reusable workflow.
-      # See wheels.yml: nested ExternalProject trees exceed MAX_PATH under %TEMP%.
+      # cibuildwheel unpacks the sdist under %TEMP%; nested ExternalProject
+      # trees would push MSBuild paths past MAX_PATH there.
       CIBW_CONFIG_SETTINGS_WINDOWS: build-dir=C:/b
     steps:
+      - name: Derive the CUDA names
+        id: cuda
+        shell: bash
+        run: |
+          full="${{ inputs.cuda }}"
+          mm="${full%.*}"                 # 12.8
+          major="${mm%.*}"                # 12
+          minor="${mm#*.}"                # 8
+          # CUDA 13 split the C runtime headers and NVVM out of the nvcc component.
+          components="nvcc_$mm cudart_$mm cublas_$mm cublas_dev_$mm thrust_$mm visual_studio_integration_$mm"
+          if [ "$major" -ge 13 ]; then components="$components crt_$mm nvvm_$mm"; fi
+          {
+            echo "mm=$mm"
+            echo "dash=${major}-${minor}"
+            echo "underscore=${major}_${minor}"
+            echo "variant=cu${major}${minor}"
+            echo "components=$components"
+          } >> "$GITHUB_OUTPUT"
       - uses: actions/download-artifact@v8
         with:
           name: sdist
           path: sdist
-      - name: Install the CUDA 12.8 toolkit (Windows)
+      - name: Install the CUDA toolkit (Windows)
         if: runner.os == 'Windows'
         shell: pwsh
+        env:
+          CUDA_FULL: ${{ inputs.cuda }}
+          CUDA_MM: ${{ steps.cuda.outputs.mm }}
+          CUDA_UNDERSCORE: ${{ steps.cuda.outputs.underscore }}
+          CUDA_COMPONENTS: ${{ steps.cuda.outputs.components }}
         run: |
           $installer = "$env:RUNNER_TEMP\cuda-network.exe"
-          Invoke-WebRequest "https://developer.download.nvidia.com/compute/cuda/12.8.1/network_installers/cuda_12.8.1_windows_network.exe" -OutFile $installer
-          $p = Start-Process $installer -Wait -PassThru -ArgumentList "-s nvcc_12.8 cudart_12.8 cublas_12.8 cublas_dev_12.8 thrust_12.8 visual_studio_integration_12.8"
+          Invoke-WebRequest "https://developer.download.nvidia.com/compute/cuda/$env:CUDA_FULL/network_installers/cuda_$($env:CUDA_FULL)_windows_network.exe" -OutFile $installer
+          $p = Start-Process $installer -Wait -PassThru -ArgumentList "-s $env:CUDA_COMPONENTS"
           if ($p.ExitCode -ne 0) { throw "CUDA installer exited with $($p.ExitCode)" }
-          $cuda = "C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.8"
+          $cuda = "C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v$env:CUDA_MM"
           # The installer does not always register with the runner's VS edition.
           $vs = & "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe" -latest -property installationPath
           Copy-Item "$cuda\extras\visual_studio_integration\MSBuildExtensions\*" "$vs\MSBuild\Microsoft\VC\v170\BuildCustomizations" -Force
           # The MSBuild CUDA integration locates the toolkit through this.
-          "CUDA_PATH_V12_8=$cuda" | Out-File -Append $env:GITHUB_ENV
+          "CUDA_PATH_V$env:CUDA_UNDERSCORE=$cuda" | Out-File -Append $env:GITHUB_ENV
           "CUDA_PATH=$cuda" | Out-File -Append $env:GITHUB_ENV
-          "$cuda\bin" | Out-File -Append $env:GITHUB_PATH
+          # CUDA 13 keeps the runtime DLLs in bin\x64; delvewheel finds them on PATH.
+          foreach ($dir in "$cuda\bin", "$cuda\bin\x64") {
+            if (Test-Path $dir) { $dir | Out-File -Append $env:GITHUB_PATH }
+          }
       - name: Locate sdist
         shell: bash
         run: echo "SDIST=$(ls sdist/*.tar.gz)" >> "$GITHUB_ENV"
@@ -69,13 +100,23 @@ jobs:
             git config --global --add safe.directory '*' &&
             dnf install -y dnf-plugins-core &&
             dnf config-manager --add-repo https://developer.download.nvidia.com/compute/cuda/repos/rhel8/x86_64/cuda-rhel8.repo &&
-            dnf install -y cuda-nvcc-12-8 cuda-cudart-devel-12-8 cuda-cccl-12-8 cuda-driver-devel-12-8 libcublas-devel-12-8 cuda-documentation-12-8
+            dnf install -y
+            cuda-nvcc-${{ steps.cuda.outputs.dash }}
+            cuda-cudart-devel-${{ steps.cuda.outputs.dash }}
+            cuda-cccl-${{ steps.cuda.outputs.dash }}
+            cuda-driver-devel-${{ steps.cuda.outputs.dash }}
+            libcublas-devel-${{ steps.cuda.outputs.dash }}
+            cuda-documentation-${{ steps.cuda.outputs.dash }}
+          # NEMO_SPEECH_VARIANT enables GGML_CUDA and the +cuXY label
+          # (pyproject.toml overrides); the build checks it against the toolkit.
           CIBW_ENVIRONMENT_LINUX: >-
-            CUDACXX=/usr/local/cuda-12.8/bin/nvcc
-            PATH=/usr/local/cuda-12.8/bin:$PATH
-            CMAKE_ARGS="-DGGML_CUDA=ON -DCMAKE_CUDA_ARCHITECTURES=${{ inputs.archs }}"
+            NEMO_SPEECH_VARIANT=${{ steps.cuda.outputs.variant }}
+            CUDACXX=/usr/local/cuda-${{ steps.cuda.outputs.mm }}/bin/nvcc
+            PATH=/usr/local/cuda-${{ steps.cuda.outputs.mm }}/bin:$PATH
+            CMAKE_ARGS="-DCMAKE_CUDA_ARCHITECTURES=${{ inputs.archs }}"
           CIBW_ENVIRONMENT_WINDOWS: >-
-            CMAKE_ARGS="-DGGML_CUDA=ON -DCMAKE_CUDA_ARCHITECTURES=${{ inputs.archs }}"
+            NEMO_SPEECH_VARIANT=${{ steps.cuda.outputs.variant }}
+            CMAKE_ARGS="-DCMAKE_CUDA_ARCHITECTURES=${{ inputs.archs }}"
           CIBW_REPAIR_WHEEL_COMMAND_LINUX: auditwheel repair --exclude libcuda.so.1 -w {dest_dir} {wheel}
           CIBW_REPAIR_WHEEL_COMMAND_WINDOWS: >-
             delvewheel repair --analyze-existing --ignore-existing --exclude nvcuda.dll -w {dest_dir} {wheel}
@@ -84,11 +125,11 @@ jobs:
           # stub, so its wheel is only built and repaired.
           CIBW_TEST_COMMAND_LINUX: >-
             mkdir -p /tmp/cudastub &&
-            ln -sf /usr/local/cuda-12.8/lib64/stubs/libcuda.so /tmp/cudastub/libcuda.so.1 &&
+            ln -sf /usr/local/cuda-${{ steps.cuda.outputs.mm }}/lib64/stubs/libcuda.so /tmp/cudastub/libcuda.so.1 &&
             LD_LIBRARY_PATH=/tmp/cudastub pytest {project}/tests -p no:cacheprovider
           CIBW_TEST_SKIP: "*-win_amd64"
       - uses: actions/upload-artifact@v7
         if: inputs.upload
         with:
-          name: wheels-cuda-${{ matrix.os }}
+          name: wheels-${{ steps.cuda.outputs.variant }}-${{ matrix.os }}
           path: wheelhouse/*.whl
