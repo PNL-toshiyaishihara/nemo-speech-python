@@ -32,16 +32,28 @@ def _candidate_names(stem: str) -> list[str]:
     return [f"lib{stem}.so.1", f"lib{stem}.so"]
 
 
-def _register_dll_directories(directory: pathlib.Path) -> None:
-    # The dependent DLLs (ggml*, the C++ runtime libraries) live beside the
-    # C ABI DLL. CUDA builds additionally need the toolkit runtime.
+def _dll_directories(directory: pathlib.Path, overridden: bool) -> list:
+    """Directories whose DLLs the C ABI DLLs in ``directory`` may import.
+
+    The dependent DLLs (ggml*, and in a wheel the CUDA runtime and cuBLAS
+    copied in by the repair step) live beside the C ABI DLL. Only a library
+    directory given through NEMO_SPEECH_LIB_PATH, such as a local CUDA build,
+    also gets the toolkit's DLLs (``bin``, or ``bin\\x64`` from CUDA 13 on).
+    A wheel must not: the search order among added directories is
+    unspecified, so an installed toolkit's older cuBLAS could be picked
+    instead of the bundled one.
+    """
     directories = [directory]
     cuda_path = os.environ.get("CUDA_PATH")
-    if cuda_path:
-        directories.append(pathlib.Path(cuda_path) / "bin")
-    for d in directories:
-        if d.is_dir():
-            _dll_directory_handles.append(os.add_dll_directory(str(d)))
+    if overridden and cuda_path:
+        directories += [pathlib.Path(cuda_path) / "bin", pathlib.Path(cuda_path) / "bin" / "x64"]
+    return [d for d in directories if d.is_dir()]
+
+
+def _register_dll_directories(directory: pathlib.Path) -> None:
+    overridden = bool(os.environ.get("NEMO_SPEECH_LIB_PATH"))
+    for d in _dll_directories(directory, overridden):
+        _dll_directory_handles.append(os.add_dll_directory(str(d)))
 
 
 def _missing_cuda_driver_hint(directory: pathlib.Path) -> str:
