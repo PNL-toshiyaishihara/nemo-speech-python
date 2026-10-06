@@ -239,7 +239,7 @@ auditwheel/delvewheel/delocate. Builds are tiered by cost:
 | Workflow | When | Builds |
 |---|---|---|
 | `wheels.yml` | every push to `main` and every PR | CPU wheels (Linux x86_64/aarch64, Windows x64, macOS arm64) and the Windows Vulkan wheel, each tested on Python 3.10 to 3.14 |
-| `cuda-smoke.yml` | pushes and PRs that touch `vendor/`, `CMakeLists.txt`, `cmake/`, `patches/`, `pyproject.toml`, the loader or the CUDA workflows | CUDA 12.8 and 13.0 wheels for one architecture (sm_86), Linux tested against the driver stub; nothing uploaded |
+| `cuda-smoke.yml` | every push to `main` and every PR; builds only when the change touches `vendor/`, `CMakeLists.txt`, `cmake/`, `patches/`, `licenses/`, `pyproject.toml`, the loader or the CUDA workflows | CUDA 12.8 and 13.0 wheels for one architecture (sm_86), Linux tested against the driver stub; nothing uploaded. Its final `cuda-smoke` job passes when the build passed or was not needed, so it can be a required check |
 | `wheels.yml` manual run | on demand | adds the full CUDA wheels; `target` picks `cuda`, `cuda-windows` or `cuda-linux`, `cuda` picks `12.8` or `13.0` |
 | `release.yml` | tags `v*` | every variant, then a draft GitHub Release with notes and `SHA256SUMS` (see [RELEASING.md](RELEASING.md)) |
 
