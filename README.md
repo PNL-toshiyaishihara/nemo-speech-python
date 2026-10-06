@@ -83,25 +83,29 @@ build. An sdist (`python -m build --sdist`) contains everything and builds
 without git metadata.
 
 The build tree is kept in `build/<wheel tag>/`, so rebuilds are incremental.
-Upstream CMake options pass straight through:
+GPU backends are chosen with `NEMO_SPEECH_VARIANT` (`vulkan`, `cu128`,
+`cu130`), which also gives the wheel its local version label; the build
+refuses `GGML_VULKAN`/`GGML_CUDA` without it, and unknown variants, so that no
+GPU wheel is versioned like the CPU one. Other upstream CMake options pass
+straight through `CMAKE_ARGS`.
 
 On Windows, keep the build tree path short (the nested Vulkan shader-generator
 project otherwise exceeds MAX_PATH): build from a short checkout path or pass
 `-C build-dir=C:/b`.
 
 ```bash
-CMAKE_ARGS="-DGGML_VULKAN=ON" pip install .     # needs the Vulkan SDK (glslc)
-CMAKE_ARGS="-DGGML_CUDA=ON -DCMAKE_CUDA_ARCHITECTURES=89" pip install .   # untested
+NEMO_SPEECH_VARIANT=vulkan pip install .     # needs the Vulkan SDK (glslc)
 # keep separate build trees per variant:
-pip wheel . -C build-dir=build/vulkan -C cmake.define.GGML_VULKAN=ON
+NEMO_SPEECH_VARIANT=vulkan pip wheel . -C build-dir=build/vulkan
 ```
 
 ### CUDA
 
-Building needs the CUDA 12 toolkit (nvcc), not a GPU or driver:
+Building needs the CUDA 12.8 or 13.0 toolkit (nvcc), not a GPU or driver.
+The variant names the toolkit, and the build checks that they match:
 
 ```bash
-CMAKE_ARGS="-DGGML_CUDA=ON -DCMAKE_CUDA_ARCHITECTURES=86-real" \
+NEMO_SPEECH_VARIANT=cu128 CMAKE_ARGS="-DCMAKE_CUDA_ARCHITECTURES=86-real" \
     pip wheel . -C build-dir=build/cuda
 ```
 

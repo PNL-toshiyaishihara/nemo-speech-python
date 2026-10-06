@@ -31,8 +31,10 @@ Python 3.10 to 3.14 (each is tested on all of them, except where noted).
 | CUDA 13.0 | `+cu130` | `cu130` | Linux x86_64, Windows x64 (not testable on CI runners) |
 
 The local version label keeps the file names apart. `NEMO_SPEECH_VARIANT`
-enables the backend and sets the label (`pyproject.toml` overrides); the build
-refuses unknown values and CUDA toolkits that do not match the label.
+enables the backend and sets the label (`pyproject.toml` overrides). The build
+refuses unknown values, a GPU backend without its variant, and CUDA toolkits
+that do not match the label. A new variant needs an override in
+`pyproject.toml` and an entry in `NSP_KNOWN_VARIANTS` in `CMakeLists.txt`.
 
 A release therefore has 11 assets: 9 wheels, the sdist and `SHA256SUMS`.
 
@@ -68,18 +70,24 @@ A release therefore has 11 assets: 9 wheels, the sdist and `SHA256SUMS`.
    ```
 
 3. **Wait** for `release.yml` (about two hours, dominated by the CUDA
-   builds). It builds and tests every variant, then creates a **draft**
-   release with the assets, `SHA256SUMS` and generated notes. Tags with
-   `a`/`b`/`rc`/`dev` become pre-releases.
+   builds). It refuses a tag that is not on `main` or does not match
+   `__version__`, builds and tests every variant, checks that every expected
+   wheel and the sdist are there, then creates a **draft** release with the
+   assets, `SHA256SUMS` and generated notes. Tags with `a`/`b`/`rc`/`dev`
+   become pre-releases.
 4. **Review the draft**: the change list, the vendored-source table, that all
    11 assets are there. Edit the text if needed, then publish it.
 5. **Next development version.** A PR setting `__version__` to the next
-   `.dev0` (e.g. `0.3.0.dev0`), labelled `skip-changelog`.
+   `.dev0`, labelled `skip-changelog`: after `0.2.0`, `0.3.0.dev0`. After a
+   pre-release, the next pre-release's `.dev0` (after `0.2.0rc1`,
+   `0.2.0rc2.dev0`), because PEP 440 sorts `0.2.0.dev0` *before*
+   `0.2.0rc1`. The final release's version PR then sets `0.2.0`.
 
 If the release workflow fails before anything is published, fix the cause in
 a PR, delete the tag (`git push --delete origin v0.2.0`, `git tag -d v0.2.0`)
-and tag again. Never move or reuse the tag of a published release; release a
-new patch version instead.
+and tag again. The next run deletes any draft an earlier run left for the
+same tag, and it refuses to touch a published release. Never move or reuse
+the tag of a published release; release a new patch version instead.
 
 ## Updating NeMo-Speech.cpp
 
