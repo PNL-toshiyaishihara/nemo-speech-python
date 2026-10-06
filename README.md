@@ -62,6 +62,8 @@ the vendored source commits; please include it in bug reports.
 | `.github/workflows/` | CI and releases (see [CI and releases](#ci-and-releases)) |
 | `scripts/` | `source_revisions.py` (records submodule commits in the sdist), `release_notes.py` |
 | `RELEASING.md` | Versioning, branches/PRs and the release procedure |
+| `CONTRIBUTING.md` | Design principles, development setup, Windows pitfalls, test models |
+| `CLAUDE.md` | Working notes for Claude Code sessions |
 
 ## Build from source
 
