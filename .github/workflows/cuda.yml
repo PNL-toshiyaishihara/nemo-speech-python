@@ -16,10 +16,10 @@ on:
         required: true
       # The release list, used by release.yml and manual wheels.yml runs:
       # native code for Turing (7.5) to Blackwell (10.0, 12.0) plus compute_90
-      # PTX, which the driver compiles for any newer GPU. ggml-cuda turns
-      # 120-real into 120a-real, which runs on compute capability 12.0 only,
-      # so the PTX must come from a plain architecture (as ggml's own default
-      # list does).
+      # PTX, which the driver compiles for any other newer GPU. The patched
+      # ggml-cuda turns 100 and 12X into 100a and 12Xa, which run on exactly
+      # that compute capability, so the PTX must come from a plain
+      # architecture (as ggml's own default list does).
       archs:
         description: CMAKE_CUDA_ARCHITECTURES
         type: string
