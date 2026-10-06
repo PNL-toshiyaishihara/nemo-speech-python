@@ -35,11 +35,14 @@ endforeach()
 # ---- Wheel defaults (override with -D / CMAKE_ARGS) ----
 # Only components with Python bindings are built. GGML_NATIVE=OFF keeps the CPU
 # backend portable (AVX2 baseline on x86-64) instead of tuning for the build host.
-# The Japanese/Mandarin TTS tokenizers stay off: upstream compiles absolute
-# data paths into the library, which do not survive relocation into a wheel.
+# The Japanese/Mandarin TTS tokenizers need data files (OpenJTalk dictionary,
+# Mandarin G2P tables) that upstream finds through absolute build paths; the
+# package ships them and points upstream at them (see nemo_speech/_data.py).
 set(NEMO_SPEECH_BUILD_ASR         ON  CACHE BOOL "Build automatic speech recognition")
 set(NEMO_SPEECH_BUILD_DIAR        ON  CACHE BOOL "Build speaker diarization")
 set(NEMO_SPEECH_BUILD_TTS         ON  CACHE BOOL "Build text-to-speech")
+set(NEMO_SPEECH_TTS_WITH_JA       ON  CACHE BOOL "Build Japanese MagpieTTS tokenizer support")
+set(NEMO_SPEECH_TTS_WITH_ZH       ON  CACHE BOOL "Build Mandarin MagpieTTS tokenizer support")
 set(NEMO_SPEECH_BUILD_NMT         ON  CACHE BOOL "Build text translation")
 set(NEMO_SPEECH_BUILD_CLI         OFF CACHE BOOL "Build the nemo-speech CLI")
 set(NEMO_SPEECH_BUILD_MIC_CAPTURE OFF CACHE BOOL "Build microphone capture")
@@ -53,6 +56,27 @@ if(APPLE)
     set(GGML_METAL                ON  CACHE BOOL "ggml: use Metal")
     set(GGML_OPENMP               OFF CACHE BOOL "ggml: use OpenMP")
 endif()
+
+# The Japanese/Mandarin tokenizers build from two more upstream submodules.
+set(_nsp_tokenizer_required "")
+if(NEMO_SPEECH_TTS_WITH_JA)
+    list(APPEND _nsp_tokenizer_required "${NSP_UPSTREAM_DIR}/third_party/open_jtalk/src/COPYING")
+endif()
+if(NEMO_SPEECH_TTS_WITH_ZH)
+    list(APPEND _nsp_tokenizer_required
+        "${NSP_UPSTREAM_DIR}/third_party/cppjieba/LICENSE"
+        "${NSP_UPSTREAM_DIR}/third_party/cppjieba/deps/limonp/LICENSE")
+endif()
+foreach(_nsp_required IN LISTS _nsp_tokenizer_required)
+    if(NOT EXISTS "${_nsp_required}")
+        message(FATAL_ERROR
+            "missing ${_nsp_required}; initialize the submodules of the Japanese/Mandarin "
+            "TTS tokenizers:\n"
+            "  git -C vendor/NeMo-Speech.cpp submodule update --init --recursive "
+            "third_party/open_jtalk third_party/cppjieba\n"
+            "or build without them (-DNEMO_SPEECH_TTS_WITH_JA=OFF -DNEMO_SPEECH_TTS_WITH_ZH=OFF)")
+    endif()
+endforeach()
 
 # ---- Build variant ----
 # NEMO_SPEECH_VARIANT (environment; see pyproject.toml) names a published
@@ -299,6 +323,18 @@ endif()
 include(cmake/build_info.cmake)
 nsp_write_build_info("${CMAKE_BINARY_DIR}/_build_info.json")
 install(FILES "${CMAKE_BINARY_DIR}/_build_info.json" DESTINATION "${NSP_PACKAGE_DIR}")
+
+# Tokenizer data of the Japanese/Mandarin TTS frontends. Upstream compiles
+# their build and install paths into the library; nemo_speech/_data.py points
+# it at these copies instead.
+if(NEMO_SPEECH_TTS_WITH_JA)
+    install(DIRECTORY "${NSP_UPSTREAM_PREFIX}/share/nemo-speech/open_jtalk_dic/"
+        DESTINATION "${NSP_PACKAGE_DIR}/data/open_jtalk_dic")
+endif()
+if(NEMO_SPEECH_TTS_WITH_ZH)
+    install(DIRECTORY "${NSP_UPSTREAM_PREFIX}/share/nemo-speech/mandarin_g2p/"
+        DESTINATION "${NSP_PACKAGE_DIR}/data/mandarin_g2p")
+endif()
 
 # Model catalog used by nemo_speech.models (same file the upstream CLI reads).
 install(FILES "${NSP_UPSTREAM_DIR}/models/index.json"

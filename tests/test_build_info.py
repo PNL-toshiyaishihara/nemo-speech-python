@@ -18,6 +18,7 @@ def test_build_info_describes_this_build():
     assert info["variant"] == "default" or re.fullmatch(r"vulkan|cu\d+", info["variant"])
     assert set(info["backends"]) == {"cuda", "vulkan", "metal"}
     assert info["components"] == {"asr": True, "diar": True, "tts": True, "nmt": True}
+    assert info["tts_tokenizers"] == {"ja": True, "zh": True}
     for name in ("NeMo-Speech.cpp", "llama.cpp", "sentencepiece"):
         assert re.fullmatch(r"[0-9a-f]{40}", info["sources"][name]["commit"]), name
 

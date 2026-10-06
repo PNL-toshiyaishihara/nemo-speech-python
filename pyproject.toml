@@ -41,7 +41,8 @@ wheel.packages = ["nemo_speech"]
 # serves every Python 3 version.
 wheel.py-api = "py3"
 # Keep the sdist to what the build needs: llama.cpp's sample models, docs and
-# tools, and SentencePiece's training data and Python package, are unused.
+# tools, cppjieba's dictionaries and tests (upstream ships its own Mandarin
+# data), and SentencePiece's training data and Python package, are unused.
 sdist.exclude = [
     "build/",
     "dist/",
@@ -54,6 +55,8 @@ sdist.exclude = [
     "vendor/NeMo-Speech.cpp/llama.cpp/examples/",
     "vendor/NeMo-Speech.cpp/llama.cpp/tools/",
     "vendor/NeMo-Speech.cpp/llama.cpp/tests/",
+    "vendor/NeMo-Speech.cpp/third_party/cppjieba/dict/",
+    "vendor/NeMo-Speech.cpp/third_party/cppjieba/test/",
     "vendor/sentencepiece/data/",
     "vendor/sentencepiece/python/",
 ]

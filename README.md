@@ -74,13 +74,17 @@ Requirements: Python 3.10+, CMake 3.26+, git, and a C++17 compiler
 git clone https://github.com/PNL-toshiyaishihara/nemo-speech-python.git && cd nemo-speech-python
 git submodule update --init vendor/NeMo-Speech.cpp vendor/sentencepiece
 git -C vendor/NeMo-Speech.cpp submodule update --init --depth 1 llama.cpp
+git -C vendor/NeMo-Speech.cpp submodule update --init --recursive --depth 1 third_party/open_jtalk third_party/cppjieba
 pip install .
 ```
 
-Only the `llama.cpp` submodule of NeMo-Speech.cpp is needed; the others
-(gRPC protos, KenLM, Open JTalk, ...) belong to features the wheel does not
-build. An sdist (`python -m build --sdist`) contains everything and builds
-without git metadata.
+Of NeMo-Speech.cpp's submodules, only `llama.cpp` and the Japanese/Mandarin
+TTS tokenizers' `open_jtalk` and `cppjieba` are needed; the others (gRPC
+protos, KenLM, ...) belong to features the wheel does not build. Without the
+tokenizer submodules, build with
+`CMAKE_ARGS="-DNEMO_SPEECH_TTS_WITH_JA=OFF -DNEMO_SPEECH_TTS_WITH_ZH=OFF"`.
+An sdist (`python -m build --sdist`) contains everything and builds without
+git metadata.
 
 The build tree is kept in `build/<wheel tag>/`, so rebuilds are incremental.
 GPU backends are chosen with `NEMO_SPEECH_VARIANT` (`vulkan`, `cu128`,
@@ -141,8 +145,8 @@ CI builds the CUDA wheels on tags (`release.yml`) and manual `wheels.yml` runs.
 
 Wheel defaults: ASR, diarization, TTS and NMT on; CLI and microphone capture
 off; `GGML_NATIVE=OFF` (AVX2/FMA/F16C/BMI2 baseline on x86-64, see Known
-issues); on macOS Metal on and OpenMP off. The Japanese/Mandarin TTS
-tokenizers are off (see Known issues).
+issues); on macOS Metal on and OpenMP off; the Japanese and Mandarin TTS
+tokenizers on, with their data in `nemo_speech/data/` (see Known issues).
 
 ## Usage
 
@@ -171,6 +175,7 @@ with Diarizer.from_pretrained(gpu=-1) as diar:
 with Synthesizer.from_pretrained("magpie") as tts:
     print(tts.speakers)
     tts.synthesize("Hello world.", voice="Sofia").save("hello.wav")
+    tts.synthesize("こんにちは、世界。", language="ja-JP").save("ja.wav")
     for chunk in tts.stream("Streaming playback, chunk by chunk."):
         ...  # int16 numpy arrays at tts.sample_rate
 
@@ -287,8 +292,28 @@ and worked around here):
 - **Diarization example.** `examples/diarize_file.cpp` zero-initializes
   `left_context_frames`, which is a valid explicit value (0) rather than
   "keep the preset"; the bindings pass -1.
-- **Non-relocatable TTS data.** The Japanese/Mandarin tokenizers compile
-  absolute data paths into the library, so they cannot ship in a wheel.
+- **Non-relocatable TTS data.** The Japanese/Mandarin tokenizers look for
+  their data (the OpenJTalk dictionary, the Mandarin G2P tables) at build and
+  install paths compiled into the library, which do not exist where a wheel
+  is installed. They check `MAGPIE_OPENJTALK_DIC_DIR` and
+  `MAGPIE_MANDARIN_G2P_DIR` first, so the package ships the data in
+  `nemo_speech/data/` and sets these variables when the TTS library loads,
+  unless they are already set or `NEMO_SPEECH_LIB_PATH` selects another
+  library.
+- **OpenJTalk dictionary path on Windows.** Open JTalk's MeCab opens the
+  dictionary with `CreateFileA`, i.e. in the ANSI code page, so Japanese TTS
+  fails ("native Magpie tokenizer is not available for language_code
+  'ja-JP'") when the package is installed under a path that code page cannot
+  represent (for example Japanese characters on a code-page-1252 system).
+  Copy `nemo_speech/data/open_jtalk_dic` to a path it can represent and set
+  `MAGPIE_OPENJTALK_DIC_DIR` to that copy.
+- **Open JTalk's MeCab and C++17.** MeCab uses `std::binary_function`,
+  which C++17 removed. Upstream restores it only for MSVC, through
+  `$<$<COMPILE_LANGUAGE:CXX>:/FIfunctional>`, which Visual Studio generators
+  also apply to the target's C files (they fail with STL1003); libc++ on
+  macOS has no `binary_function` at all. `cmake/project_include.cmake` moves
+  the option onto the C++ sources and, on macOS, defines libc++'s
+  `_LIBCPP_ENABLE_CXX17_REMOVED_UNARY_BINARY_FUNCTION` for MeCab.
 - **`interim_results` is ignored by the C ABI.** Only upstream's gRPC server
   filters partial results; `RecognitionStream` drops them itself when
   `interim_results=False`.
@@ -342,8 +367,10 @@ This package:
 
 Apache License 2.0; see [LICENSE](LICENSE) and [NOTICE](NOTICE). Parts are
 adapted from NeMo-Speech.cpp (Apache-2.0). Wheels bundle NeMo-Speech.cpp,
-ggml/llama.cpp, SentencePiece and runtime libraries, whose licenses ship in
-`nemo_speech/licenses/`.
+ggml/llama.cpp, SentencePiece, Open JTalk (with MeCab and the NAIST Japanese
+dictionary), cppjieba and runtime libraries, whose licenses ship in
+`nemo_speech/licenses/`; the attribution of the Mandarin G2P data (Jieba,
+pypinyin) is in NeMo-Speech.cpp's `THIRD_PARTY_NOTICES.md` there.
 
 Models are not part of this project. `nemo_speech.models` downloads them from
 their publishers on request, and each model is governed by its own license

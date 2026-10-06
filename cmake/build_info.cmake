@@ -110,6 +110,15 @@ function(nsp_write_build_info out_file)
     endforeach()
     string(JSON info SET "${info}" components "${components}")
 
+    # Optional TTS tokenizers; their data ships in nemo_speech/data.
+    set(tokenizers "{}")
+    foreach(language IN ITEMS JA ZH)
+        string(TOLOWER "${language}" key)
+        nsp_json_bool("${NEMO_SPEECH_TTS_WITH_${language}}" flag)
+        string(JSON tokenizers SET "${tokenizers}" "${key}" "${flag}")
+    endforeach()
+    string(JSON info SET "${info}" tts_tokenizers "${tokenizers}")
+
     if(GGML_CUDA)
         set(cuda "{}")
         string(JSON cuda SET "${cuda}" toolkit "\"${CUDAToolkit_VERSION}\"")
