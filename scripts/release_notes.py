@@ -162,6 +162,9 @@ def notes(tag: str, dist: pathlib.Path, repo: str) -> str:
         "",
         f"Python: {python_versions(built[0][2])}. Every wheel is `py3-none`, so one file serves all of them.",
         "",
+        "The x86-64 wheels (Linux x86_64 and Windows x64, every variant) need a CPU with AVX2, "
+        "FMA, F16C and BMI2 (Intel Haswell, AMD Zen or newer).",
+        "",
         "| Variant | Platform | Requirements | File |",
         "|---|---|---|---|",
     ]

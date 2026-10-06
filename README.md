@@ -126,11 +126,12 @@ CMAKE_ARGS="-DGGML_CUDA=ON -DCMAKE_CUDA_ARCHITECTURES=86-real" \
   example a Japanese user name); point `TEMP`/`TMP` at an ASCII directory for
   the build.
 
-CI builds the CUDA wheels on tags and manual runs (`wheels-cuda` job).
+CI builds the CUDA wheels on tags (`release.yml`) and manual `wheels.yml` runs.
 
 Wheel defaults: ASR, diarization, TTS and NMT on; CLI and microphone capture
-off; `GGML_NATIVE=OFF` (portable AVX2 baseline on x86-64); on macOS Metal on
-and OpenMP off. The Japanese/Mandarin TTS tokenizers are off (see Known issues).
+off; `GGML_NATIVE=OFF` (AVX2/FMA/F16C/BMI2 baseline on x86-64, see Known
+issues); on macOS Metal on and OpenMP off. The Japanese/Mandarin TTS
+tokenizers are off (see Known issues).
 
 ## Usage
 
@@ -261,7 +262,8 @@ the sdist; PyPI does not accept local version labels).
 
 ## Known issues
 
-Upstream (worth reporting to NeMo-Speech.cpp):
+Upstream (recorded as [`upstream` issues](https://github.com/PNL-toshiyaishihara/nemo-speech-python/issues?q=label%3Aupstream)
+and worked around here):
 
 - **llama.cpp patching on Windows.** Upstream normalizes each patch with CMake
   `file(WRITE)`, which writes CRLF on Windows; with `core.autocrlf=input` or
@@ -276,13 +278,28 @@ Upstream (worth reporting to NeMo-Speech.cpp):
   "keep the preset"; the bindings pass -1.
 - **Non-relocatable TTS data.** The Japanese/Mandarin tokenizers compile
   absolute data paths into the library, so they cannot ship in a wheel.
-- **cuBLAS shim out of date (fixed in upstream v0.2.0).** At a5f19be,
-  ggml-cuda called `cublasSetWorkspace_v2` and `cublasSgemmBatched`, which
-  `kernels/cublas_shim.cu` did not provide, so shim-based CUDA builds failed
-  to load.
+- **`interim_results` is ignored by the C ABI.** Only upstream's gRPC server
+  filters partial results; `RecognitionStream` drops them itself when
+  `interim_results=False`.
 
 This package:
 
+- **x86-64 CPUs need AVX2.** The x86-64 wheels (CPU, Vulkan and CUDA) build
+  ggml's CPU backend with AVX, AVX2, FMA, F16C and BMI2 (`GGML_NATIVE=OFF`
+  gives a portable baseline, not runtime dispatch). CPUs without them, such
+  as pre-Haswell Intel and some Pentium, Celeron and Atom models, crash with
+  an illegal-instruction error once a model runs. For such machines, build
+  from source with
+  `CMAKE_ARGS="-DGGML_AVX2=OFF -DGGML_FMA=OFF -DGGML_F16C=OFF -DGGML_BMI2=OFF"`
+  (untested).
+- **Other ggml builds in the same process.** The bundled ggml/llama.cpp
+  libraries keep their usual names (`ggml.dll`, `libggml-base.so.0`,
+  `llama.dll`, ...), and so does the CUDA runtime on Windows
+  (`cublas64_12.dll`, ...). A process that has already loaded another copy,
+  for example through llama-cpp-python or PyTorch, may bind nemo-speech to
+  that copy, which lacks NeMo-Speech.cpp's ggml patches or is a different
+  version, and crash or fail with missing symbols. Not reproduced so far;
+  use a separate process if both are needed.
 - **llama.cpp and manylinux_2_28.** llama.cpp's sampler calls
   `std::random_device::entropy()`, which needs `GLIBCXX_3.4.25`; the
   manylinux_2_28 policy allows up to 3.4.24, so auditwheel refuses the wheel.
