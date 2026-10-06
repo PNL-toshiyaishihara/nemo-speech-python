@@ -2,6 +2,7 @@
 
 import re
 import threading
+import time
 
 import numpy as np
 import pytest
@@ -69,6 +70,22 @@ def test_concurrent_transcribe(recognizer, jfk_wav):
     for t in threads:
         t.join()
     assert texts == [expected, expected]
+
+
+def test_close_waits_for_running_transcribe(asr_model_path, jfk_wav):
+    samples, rate = load_wav(jfk_wav)
+    r = Recognizer(asr_model_path, gpu=-1)
+    texts = []
+    worker = threading.Thread(target=lambda: texts.append(r.transcribe(samples, rate).text))
+    worker.start()
+    # Wait until the call is inside the native code, then close from here.
+    while not r._native._calls and worker.is_alive():
+        time.sleep(0.001)
+    r.close()  # must wait instead of freeing the model under the running call
+    worker.join()
+    assert len(texts) == 1 and JFK_PHRASE in _normalized(texts[0])
+    with pytest.raises(RuntimeError):
+        r.transcribe(samples, rate)
 
 
 def test_closed_recognizer_rejects_calls(asr_model_path):

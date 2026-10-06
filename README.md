@@ -173,7 +173,8 @@ Notes:
   backend); `-1` forces the CPU. TTS has no device option in the C ABI.
 - `Recognizer`, `Diarizer` (separate streams) and `Translator` can be shared
   across threads; ctypes releases the GIL during native calls. Calls on one
-  `Synthesizer` are serialized.
+  `Synthesizer` are serialized. `close()` waits for calls still running on
+  other threads and closes the streams opened on the model first.
 - `nemo_speech.capi.{asr,diar,nmt,tts}` expose the C ABI directly.
 - Building without a component (e.g. `-DNEMO_SPEECH_BUILD_NMT=OFF`) keeps
   `import nemo_speech` working; only that class raises `ImportError`.

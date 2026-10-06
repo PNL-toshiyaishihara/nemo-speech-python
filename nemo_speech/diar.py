@@ -7,13 +7,12 @@ For speaker tags on transcript words, pass ``diarization_model_path`` to
 from __future__ import annotations
 
 import ctypes
-import weakref
 from dataclasses import dataclass
 from typing import Any, List, Optional
 
 import numpy as np
 
-from ._common import PathLike, as_mono_f32, fsencode_or_none, status_checker
+from ._common import NativeHandle, PathLike, as_mono_f32, fsencode_or_none, status_checker
 from ._paths import utf8_file_paths
 from .capi import asr as _asr
 from .capi import diar as C
@@ -75,18 +74,17 @@ class DiarizationResult:
 class _Job:
     """Accessors shared by streams and finished offline jobs."""
 
-    _handle: Optional[ctypes.c_void_p]
-    _diarizer: "Diarizer"
-
-    def _require_handle(self) -> ctypes.c_void_p:
-        if not self._handle:
-            raise RuntimeError("diarization job is closed")
-        return self._handle
+    def __init__(self, diarizer: "Diarizer", native: NativeHandle) -> None:
+        # The model must outlive the job; it also closes the job before
+        # destroying itself (NativeHandle.adopt).
+        self._diarizer = diarizer
+        self._native = native
 
     @property
     def frame_count(self) -> int:
         """Labeled frames so far (see :attr:`Diarizer.seconds_per_frame`)."""
-        return C.nemo_speech_diar_frame_count(self._require_handle())
+        with self._native.use() as handle:
+            return C.nemo_speech_diar_frame_count(handle)
 
     def frame_probs(self) -> np.ndarray:
         """Retained per-frame probabilities, shape ``(frames, num_speakers)``.
@@ -94,42 +92,43 @@ class _Job:
         Covers frames ``[frame_probs_start, frame_count)``; long streams drop
         the oldest raw probabilities after converting them into segments.
         """
-        handle = self._require_handle()
-        start = C.nemo_speech_diar_frame_probs_start(handle)
-        frames = C.nemo_speech_diar_frame_count(handle) - start
-        speakers = self._diarizer.num_speakers
-        out = np.zeros((max(frames, 0), speakers), dtype=np.float32)
-        if out.size:
-            _check(
-                C.nemo_speech_diar_frame_probs(
-                    handle, out.ctypes.data_as(ctypes.POINTER(ctypes.c_float)), out.size
+        speakers = self._diarizer._num_speakers
+        with self._native.use() as handle:
+            start = C.nemo_speech_diar_frame_probs_start(handle)
+            frames = C.nemo_speech_diar_frame_count(handle) - start
+            out = np.zeros((max(frames, 0), speakers), dtype=np.float32)
+            if out.size:
+                _check(
+                    C.nemo_speech_diar_frame_probs(
+                        handle, out.ctypes.data_as(ctypes.POINTER(ctypes.c_float)), out.size
+                    )
                 )
-            )
         return out
 
     @property
     def frame_probs_start(self) -> int:
-        return C.nemo_speech_diar_frame_probs_start(self._require_handle())
+        with self._native.use() as handle:
+            return C.nemo_speech_diar_frame_probs_start(handle)
 
     def segments(self, config: Optional[SegmentationConfig] = None) -> List[SpeakerSegment]:
         """Speaker segments sorted by start time."""
-        handle = self._require_handle()
         cfg = ctypes.byref(config._struct()) if config else None
         count = ctypes.c_size_t()
-        _check(C.nemo_speech_diar_segments(handle, cfg, None, 0, ctypes.byref(count)))
-        if count.value == 0:
-            return []
-        buffer = (C.nemo_speech_diar_segment * count.value)()
-        _check(C.nemo_speech_diar_segments(handle, cfg, buffer, count.value, ctypes.byref(count)))
+        with self._native.use() as handle:
+            _check(C.nemo_speech_diar_segments(handle, cfg, None, 0, ctypes.byref(count)))
+            if count.value == 0:
+                return []
+            buffer = (C.nemo_speech_diar_segment * count.value)()
+            _check(
+                C.nemo_speech_diar_segments(handle, cfg, buffer, count.value, ctypes.byref(count))
+            )
         return [
             SpeakerSegment(start=s.start_time, end=s.end_time, speaker=s.speaker)
             for s in buffer[: count.value]
         ]
 
     def close(self) -> None:
-        if self._handle:
-            C.nemo_speech_diar_stream_close(self._handle)
-            self._handle = None
+        self._native.close()
 
     def __del__(self) -> None:
         try:
@@ -141,9 +140,8 @@ class _Job:
 class DiarizationStream(_Job):
     """Live diarization; push audio, then :meth:`finish`. Single-threaded."""
 
-    def __init__(self, diarizer: "Diarizer", handle: ctypes.c_void_p) -> None:
-        self._diarizer = diarizer  # the model must outlive the stream
-        self._handle = handle
+    def __init__(self, diarizer: "Diarizer", native: NativeHandle) -> None:
+        super().__init__(diarizer, native)
         self._sample_rate: Optional[int] = None
 
     def push(self, audio: "np.typing.ArrayLike", sample_rate: int = 0) -> None:
@@ -153,19 +151,21 @@ class DiarizationStream(_Job):
         elif sample_rate != self._sample_rate:
             raise ValueError("the sample rate cannot change within a stream")
         samples = as_mono_f32(audio)
-        if samples.size:
-            _check(
-                C.nemo_speech_diar_stream_push_f32(
-                    self._require_handle(),
-                    samples.ctypes.data_as(ctypes.POINTER(ctypes.c_float)),
-                    samples.size,
-                    sample_rate,
+        with self._native.use() as handle:
+            if samples.size:
+                _check(
+                    C.nemo_speech_diar_stream_push_f32(
+                        handle,
+                        samples.ctypes.data_as(ctypes.POINTER(ctypes.c_float)),
+                        samples.size,
+                        sample_rate,
+                    )
                 )
-            )
 
     def finish(self) -> None:
         """No more audio: label the remaining tail."""
-        _check(C.nemo_speech_diar_stream_finish(self._require_handle()))
+        with self._native.use() as handle:
+            _check(C.nemo_speech_diar_stream_finish(handle))
 
     def __enter__(self) -> "DiarizationStream":
         return self
@@ -174,14 +174,11 @@ class DiarizationStream(_Job):
         self.close()
 
 
-class _OfflineJob(_Job):
-    def __init__(self, diarizer: "Diarizer", handle: ctypes.c_void_p) -> None:
-        self._diarizer = diarizer
-        self._handle = handle
-
-
 class Diarizer:
     """A loaded Sortformer diarization model.
+
+    Offline :meth:`diarize` calls and separate streams can run on different
+    threads; :meth:`close` waits for the calls running on other threads.
 
     Args:
         model_path: Sortformer GGUF.
@@ -206,8 +203,7 @@ class Diarizer:
         spkcache_frames: Optional[int] = None,
         update_period_frames: Optional[int] = None,
     ) -> None:
-        self._handle: Optional[ctypes.c_void_p] = None
-        self._jobs: "weakref.WeakSet[_Job]" = weakref.WeakSet()
+        self._native: Optional[NativeHandle] = None
         cfg = C.nemo_speech_diar_model_config(
             model_path=fsencode_or_none(model_path),
             gpu=0 if gpu is None else gpu,
@@ -225,7 +221,10 @@ class Diarizer:
         with utf8_file_paths():
             status = C.nemo_speech_diar_create(ctypes.byref(cfg), ctypes.byref(handle))
         _check(status)
-        self._handle = handle
+        self._native = NativeHandle(handle, C.nemo_speech_diar_destroy, "Diarizer")
+        # Fixed by the model.
+        self._num_speakers = C.nemo_speech_diar_num_speakers(handle)
+        self._seconds_per_frame = C.nemo_speech_diar_seconds_per_frame(handle)
 
     @classmethod
     def from_pretrained(cls, name: Optional[str] = None, **kwargs: Any) -> "Diarizer":
@@ -234,20 +233,22 @@ class Diarizer:
 
         return cls(models.download(name or models.default("diarization"))["diarization"], **kwargs)
 
-    def _require_handle(self) -> ctypes.c_void_p:
-        if not self._handle:
+    def _use(self) -> Any:
+        if self._native is None:
             raise RuntimeError("Diarizer is closed")
-        return self._handle
+        return self._native.use()
 
     @property
     def num_speakers(self) -> int:
         """Speaker capacity of the model (4 for V2, 8 for V3)."""
-        return C.nemo_speech_diar_num_speakers(self._require_handle())
+        with self._use():
+            return self._num_speakers
 
     @property
     def seconds_per_frame(self) -> float:
         """Native output cadence (0.08 s for V2, 0.01 s for V3)."""
-        return C.nemo_speech_diar_seconds_per_frame(self._require_handle())
+        with self._use():
+            return self._seconds_per_frame
 
     def diarize(
         self,
@@ -264,23 +265,26 @@ class Diarizer:
         samples = as_mono_f32(audio)
         if samples.size == 0:
             raise ValueError("audio is empty")
-        handle = C.nemo_speech_diar_stream_p()
-        _check(
-            C.nemo_speech_diar_offline_f32(
-                self._require_handle(),
-                samples.ctypes.data_as(ctypes.POINTER(ctypes.c_float)),
-                samples.size,
-                sample_rate,
-                ctypes.byref(handle),
+        with self._use() as handle:
+            job_handle = C.nemo_speech_diar_stream_p()
+            _check(
+                C.nemo_speech_diar_offline_f32(
+                    handle,
+                    samples.ctypes.data_as(ctypes.POINTER(ctypes.c_float)),
+                    samples.size,
+                    sample_rate,
+                    ctypes.byref(job_handle),
+                )
             )
-        )
-        job = _OfflineJob(self, handle)
+            native = NativeHandle(job_handle, C.nemo_speech_diar_stream_close, "diarization job")
+            self._native.adopt(native)
+        job = _Job(self, native)
         try:
             return DiarizationResult(
                 segments=job.segments(segmentation),
                 frame_probs=job.frame_probs(),
                 frame_offset=job.frame_probs_start,
-                seconds_per_frame=self.seconds_per_frame,
+                seconds_per_frame=self._seconds_per_frame,
             )
         finally:
             job.close()
@@ -292,19 +296,21 @@ class Diarizer:
         return self.diarize(samples, rate, **options)
 
     def stream(self) -> DiarizationStream:
-        handle = C.nemo_speech_diar_stream_p()
-        _check(C.nemo_speech_diar_stream_open(self._require_handle(), ctypes.byref(handle)))
-        stream = DiarizationStream(self, handle)
-        self._jobs.add(stream)
-        return stream
+        with self._use() as handle:
+            stream = C.nemo_speech_diar_stream_p()
+            _check(C.nemo_speech_diar_stream_open(handle, ctypes.byref(stream)))
+            native = NativeHandle(stream, C.nemo_speech_diar_stream_close, "DiarizationStream")
+            self._native.adopt(native)
+        return DiarizationStream(self, native)
 
     def close(self) -> None:
-        """Release the model, closing any streams still open on it."""
-        for job in list(self._jobs):
-            job.close()
-        if self._handle:
-            C.nemo_speech_diar_destroy(self._handle)
-            self._handle = None
+        """Release the model, closing any streams still open on it.
+
+        Waits for calls running on other threads; later calls raise
+        RuntimeError.
+        """
+        if self._native is not None:
+            self._native.close()
 
     def __enter__(self) -> "Diarizer":
         return self

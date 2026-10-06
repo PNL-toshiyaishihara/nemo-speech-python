@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import contextlib
 import os
-from typing import Callable, Optional, Union
+import threading
+from typing import Any, Callable, Iterator, Optional, Set, Union
 
 import numpy as np
 
@@ -34,6 +36,73 @@ def status_checker(last_error: Callable[[], Optional[bytes]]) -> Callable[[int],
             raise NemoSpeechError(status, decode(last_error()))
 
     return check
+
+
+class NativeHandle:
+    """A native object whose destruction waits for the calls using it.
+
+    Wrap every native call in :meth:`use`. :meth:`close` refuses new calls,
+    waits for running ones (which may be on other threads, with the GIL
+    released), closes the dependents registered with :meth:`adopt` (streams
+    opened on the object), and only then destroys the object. Dependents are
+    held here rather than by their Python wrappers, so even when the garbage
+    collector finalizes a model and its streams in an arbitrary order, every
+    stream is closed before its model.
+    """
+
+    def __init__(self, handle: Any, destroy: Callable[[Any], None], name: str) -> None:
+        self._handle = handle
+        self._destroy = destroy
+        self._name = name
+        self._cond = threading.Condition()
+        self._calls = 0
+        self._closed = False
+        self._dependents: Set["NativeHandle"] = set()
+        self._parent: Optional["NativeHandle"] = None
+
+    @contextlib.contextmanager
+    def use(self) -> Iterator[Any]:
+        """Yield the raw handle; :meth:`close` waits until the block exits."""
+        with self._cond:
+            if self._closed:
+                raise RuntimeError(f"{self._name} is closed")
+            self._calls += 1
+        try:
+            yield self._handle
+        finally:
+            with self._cond:
+                self._calls -= 1
+                if not self._calls:
+                    self._cond.notify_all()
+
+    def adopt(self, dependent: "NativeHandle") -> None:
+        """Close ``dependent`` before this object is destroyed.
+
+        Call it inside :meth:`use`, so that this object cannot be closed
+        between creating the dependent and registering it.
+        """
+        with self._cond:
+            self._dependents.add(dependent)
+        dependent._parent = self
+
+    def close(self) -> None:
+        """Destroy the object once no call uses it; later calls raise RuntimeError."""
+        with self._cond:
+            if self._closed:
+                return
+            self._closed = True
+            while self._calls:
+                self._cond.wait()
+            dependents = list(self._dependents)
+            self._dependents.clear()
+        for dependent in dependents:
+            dependent.close()
+        self._destroy(self._handle)
+        self._handle = None
+        parent, self._parent = self._parent, None
+        if parent is not None:
+            with parent._cond:
+                parent._dependents.discard(self)
 
 
 def fsencode_or_none(path: Optional[PathLike]) -> Optional[bytes]:

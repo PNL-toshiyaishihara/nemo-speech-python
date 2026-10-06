@@ -3,13 +3,19 @@
 from __future__ import annotations
 
 import ctypes
-import weakref
 from dataclasses import dataclass
 from typing import Any, List, Optional, Sequence, Tuple
 
 import numpy as np
 
-from ._common import PathLike, as_mono_f32, decode, fsencode_or_none, status_checker
+from ._common import (
+    NativeHandle,
+    PathLike,
+    as_mono_f32,
+    decode,
+    fsencode_or_none,
+    status_checker,
+)
 from ._paths import utf8_file_paths
 from .capi import asr as C
 
@@ -194,6 +200,7 @@ class Recognizer:
 
     One recognizer can serve concurrent :meth:`transcribe` calls and streams
     from multiple threads (ctypes releases the GIL during native calls).
+    :meth:`close` waits for the calls running on other threads.
 
     Args:
         model_path: ASR GGUF model.
@@ -236,8 +243,7 @@ class Recognizer:
         streaming: Optional[C.nemo_speech_asr_streaming_config] = None,
         decoder: Optional[C.nemo_speech_asr_decoder_config] = None,
     ) -> None:
-        self._handle: Optional[ctypes.c_void_p] = None
-        self._streams: "weakref.WeakSet[RecognitionStream]" = weakref.WeakSet()
+        self._native: Optional[NativeHandle] = None
 
         cfg = C.nemo_speech_asr_recognizer_config()
         model = C.nemo_speech_asr_model_config(
@@ -296,7 +302,7 @@ class Recognizer:
         with utf8_file_paths():
             status = C.nemo_speech_asr_create(ctypes.byref(cfg), ctypes.byref(handle))
         _check(status)
-        self._handle = handle
+        self._native = NativeHandle(handle, C.nemo_speech_asr_destroy, "Recognizer")
 
     @classmethod
     def from_pretrained(cls, name: Optional[str] = None, **kwargs: Any) -> "Recognizer":
@@ -312,12 +318,13 @@ class Recognizer:
     # -- lifetime --
 
     def close(self) -> None:
-        """Release the model, closing any streams still open on it."""
-        for stream in list(self._streams):
-            stream.close()
-        if self._handle:
-            C.nemo_speech_asr_destroy(self._handle)
-            self._handle = None
+        """Release the model, closing any streams still open on it.
+
+        Waits for calls running on other threads; later calls raise
+        RuntimeError.
+        """
+        if self._native is not None:
+            self._native.close()
 
     def __enter__(self) -> "Recognizer":
         return self
@@ -331,10 +338,10 @@ class Recognizer:
         except Exception:
             pass
 
-    def _require_handle(self) -> ctypes.c_void_p:
-        if not self._handle:
+    def _use(self) -> Any:
+        if self._native is None:
             raise RuntimeError("Recognizer is closed")
-        return self._handle
+        return self._native.use()
 
     # -- recognition --
 
@@ -375,16 +382,17 @@ class Recognizer:
             request_id=request_id,
         )
         result = C.nemo_speech_asr_result_p()
-        _check(
-            C.nemo_speech_asr_recognize_f32(
-                self._require_handle(),
-                options.pointer(),
-                _samples_pointer(samples),
-                samples.size,
-                sample_rate,
-                ctypes.byref(result),
+        with self._use() as handle:
+            _check(
+                C.nemo_speech_asr_recognize_f32(
+                    handle,
+                    options.pointer(),
+                    _samples_pointer(samples),
+                    samples.size,
+                    sample_rate,
+                    ctypes.byref(result),
+                )
             )
-        )
         return _take_result(result)
 
     def transcribe_file(self, path: PathLike, **options: Any) -> RecognitionResult:
@@ -421,15 +429,17 @@ class Recognizer:
             speaker_diarization=speaker_diarization,
             request_id=request_id,
         )
-        handle = C.nemo_speech_asr_stream_p()
-        _check(
-            C.nemo_speech_asr_streaming_recognize(
-                self._require_handle(), options.pointer(), ctypes.byref(handle)
+        with self._use() as handle:
+            stream = C.nemo_speech_asr_stream_p()
+            _check(
+                C.nemo_speech_asr_streaming_recognize(
+                    handle, options.pointer(), ctypes.byref(stream)
+                )
             )
-        )
-        stream = RecognitionStream(self, handle)
-        self._streams.add(stream)
-        return stream
+            native = NativeHandle(stream, C.nemo_speech_asr_stream_close, "RecognitionStream")
+            # Closing the recognizer closes the stream first.
+            self._native.adopt(native)
+        return RecognitionStream(self, native)
 
 
 class RecognitionStream:
@@ -440,20 +450,15 @@ class RecognitionStream:
     including the end-of-stream final.
     """
 
-    def __init__(self, recognizer: Recognizer, handle: ctypes.c_void_p) -> None:
-        # The recognizer must outlive the stream.
+    def __init__(self, recognizer: Recognizer, native: NativeHandle) -> None:
+        # The recognizer must outlive the stream; it also closes the stream
+        # before destroying itself (NativeHandle.adopt).
         self._recognizer = recognizer
-        self._handle: Optional[ctypes.c_void_p] = handle
+        self._native = native
         self._sample_rate: Optional[int] = None
 
-    def _require_handle(self) -> ctypes.c_void_p:
-        if not self._handle:
-            raise RuntimeError("RecognitionStream is closed")
-        return self._handle
-
-    def _drain(self) -> List[RecognitionResult]:
+    def _drain(self, handle: ctypes.c_void_p) -> List[RecognitionResult]:
         results = []
-        handle = self._require_handle()
         while True:
             result = C.nemo_speech_asr_result_p()
             _check(C.nemo_speech_asr_stream_next(handle, ctypes.byref(result)))
@@ -471,28 +476,29 @@ class RecognitionStream:
         elif sample_rate != self._sample_rate:
             raise ValueError("the sample rate cannot change within a stream")
         samples = as_mono_f32(audio)
-        if samples.size:
-            _check(
-                C.nemo_speech_asr_stream_push_f32(
-                    self._require_handle(), _samples_pointer(samples), samples.size, sample_rate
+        with self._native.use() as handle:
+            if samples.size:
+                _check(
+                    C.nemo_speech_asr_stream_push_f32(
+                        handle, _samples_pointer(samples), samples.size, sample_rate
+                    )
                 )
-            )
-        return self._drain()
+            return self._drain(handle)
 
     def force_endpoint(self) -> List[RecognitionResult]:
         """End the current utterance now and return the resulting results."""
-        _check(C.nemo_speech_asr_stream_force_endpoint(self._require_handle()))
-        return self._drain()
+        with self._native.use() as handle:
+            _check(C.nemo_speech_asr_stream_force_endpoint(handle))
+            return self._drain(handle)
 
     def finish(self) -> List[RecognitionResult]:
         """Signal end of audio and return the remaining results."""
-        _check(C.nemo_speech_asr_stream_finish(self._require_handle()))
-        return self._drain()
+        with self._native.use() as handle:
+            _check(C.nemo_speech_asr_stream_finish(handle))
+            return self._drain(handle)
 
     def close(self) -> None:
-        if self._handle:
-            C.nemo_speech_asr_stream_close(self._handle)
-            self._handle = None
+        self._native.close()
 
     def __enter__(self) -> "RecognitionStream":
         return self
