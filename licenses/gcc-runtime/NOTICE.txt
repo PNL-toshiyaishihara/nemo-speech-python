@@ -1,0 +1,14 @@
+GCC runtime (libgomp)
+=====================
+
+Linux wheels of nemo-speech bundle libgomp, the GNU OpenMP runtime library
+that is part of GCC. auditwheel copies it into the nemo_speech.libs directory
+of the wheel when the wheel is repaired.
+
+libgomp is licensed under the GNU General Public License, version 3
+(COPYING3), with the GCC Runtime Library Exception, version 3.1
+(COPYING.RUNTIME). Copyright (C) Free Software Foundation, Inc.
+
+The texts here are COPYING3 and COPYING.RUNTIME from the GCC source tree
+(https://gcc.gnu.org/). libgomp is not covered by the Apache License of this
+project.

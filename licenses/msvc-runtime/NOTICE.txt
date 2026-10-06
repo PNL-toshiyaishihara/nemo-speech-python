@@ -1,0 +1,18 @@
+Microsoft Visual C++ runtime
+============================
+
+Windows wheels of nemo-speech bundle the Microsoft Visual C++ runtime DLLs
+that the native libraries use, such as msvcp140.dll, vcruntime140.dll,
+vcruntime140_1.dll and the OpenMP runtime vcomp140.dll. delvewheel copies
+them, unmodified, into the nemo_speech.libs directory of the wheel when the
+wheel is repaired.
+
+They are "Visual C++ Runtime Files", Distributable Code under the Microsoft
+Software License Terms for Visual Studio, which may be copied and distributed
+unmodified as part of a program's installation package; see "Distributable
+Code for Visual Studio 2022":
+
+  https://learn.microsoft.com/visualstudio/releases/2022/redistribution
+
+Copyright (c) Microsoft Corporation. These files are not covered by the
+Apache License of this project.

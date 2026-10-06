@@ -23,9 +23,11 @@ patches/llama.cpp/ contains modifications to llama.cpp
 authors, licensed under the MIT License.
 
 Binary distributions (wheels) bundle NeMo-Speech.cpp, ggml/llama.cpp,
-SentencePiece and, depending on the platform, compiler runtime libraries.
-Their license texts and notices are included in the package under
-nemo_speech/licenses/.
+SentencePiece and, depending on the platform, compiler runtime libraries:
+Linux wheels bundle libgomp (GCC's OpenMP runtime; GPL-3.0 with the GCC
+Runtime Library Exception 3.1), and Windows wheels the Microsoft Visual C++
+runtime (Visual Studio Distributable Code). Their license texts and notices
+are included in the package under nemo_speech/licenses/.
 
 CUDA wheels additionally bundle the NVIDIA CUDA Runtime, cuBLAS and cuBLASLt
 libraries. They are NVIDIA redistributables provided under the NVIDIA CUDA

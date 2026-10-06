@@ -241,9 +241,9 @@ ExternalProject_Add(nsp_nemo_speech
 # ---- Package layout ----
 set(NSP_UPSTREAM_PREFIX "${NSP_STAGE_DIR}/nemo-speech")
 if(WIN32)
-    # The MSVC runtime that upstream stages for its own packages is left to the
-    # system Visual C++ Redistributable (bundling unmangled copies into a
-    # process that may already hold another version is unsafe).
+    # The MSVC runtime that upstream stages for its own packages is not
+    # installed here: the repair step (delvewheel) bundles the runtime the
+    # libraries import into nemo_speech.libs (see pyproject.toml).
     install(DIRECTORY "${NSP_UPSTREAM_PREFIX}/bin/"
         DESTINATION "${NSP_PACKAGE_DIR}/lib"
         FILES_MATCHING PATTERN "*.dll"
@@ -264,6 +264,17 @@ if(NSP_CUDA_EULA)
     install(FILES "${NSP_CUDA_EULA}"
         DESTINATION "${NSP_PACKAGE_DIR}/licenses/third_party/cuda"
         RENAME EULA.txt)
+endif()
+
+# Compiler runtimes that the repair step bundles: the MSVC runtime
+# (delvewheel) on Windows, libgomp (auditwheel) on Linux. macOS wheels use
+# the system's libc++ and no OpenMP.
+if(WIN32)
+    install(DIRECTORY licenses/msvc-runtime/
+        DESTINATION "${NSP_PACKAGE_DIR}/licenses/third_party/msvc-runtime")
+elseif(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+    install(DIRECTORY licenses/gcc-runtime/
+        DESTINATION "${NSP_PACKAGE_DIR}/licenses/third_party/gcc-runtime")
 endif()
 
 # Build description for nemo_speech.build_info().
