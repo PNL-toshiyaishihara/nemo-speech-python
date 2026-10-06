@@ -94,9 +94,11 @@ CMAKE_ARGS="-DGGML_CUDA=ON -DCMAKE_CUDA_ARCHITECTURES=86-real" \
   `delvewheel repair --analyze-existing --ignore-existing --exclude nvcuda.dll`
   so the driver itself is never bundled. Without a driver the import fails
   with a message saying so.
-- Upstream's drop-in cuBLAS shim (`NEMO_SPEECH_CUBLAS_SHIM`) does not cover
-  the pinned ggml-cuda (it lacks `cublasSetWorkspace_v2` and
-  `cublasSgemmBatched`); the build refuses it until upstream catches up.
+- `-DNEMO_SPEECH_CUBLAS_SHIM=ON` replaces cuBLAS with upstream's in-tree
+  shim (native GEMM, no cuBLASLt), which makes the wheel roughly 600 MB
+  smaller. Release wheels bundle the real cuBLAS. The build refuses the shim
+  if it does not export every cuBLAS function the pinned ggml-cuda calls
+  (upstream before v0.2.0 lacked two of them).
 - Windows: nvcc cannot use a `%TEMP%` path with non-ASCII characters (for
   example a Japanese user name); point `TEMP`/`TMP` at an ASCII directory for
   the build.
@@ -250,10 +252,10 @@ Upstream (worth reporting to NeMo-Speech.cpp):
   "keep the preset"; the bindings pass -1.
 - **Non-relocatable TTS data.** The Japanese/Mandarin tokenizers compile
   absolute data paths into the library, so they cannot ship in a wheel.
-- **cuBLAS shim out of date.** Since the llama.cpp update in a5f19be, ggml-cuda
-  calls `cublasSetWorkspace_v2` and `cublasSgemmBatched`, which
-  `kernels/cublas_shim.cu` does not provide, so shim-based CUDA builds fail to
-  load.
+- **cuBLAS shim out of date (fixed in upstream v0.2.0).** At a5f19be,
+  ggml-cuda called `cublasSetWorkspace_v2` and `cublasSgemmBatched`, which
+  `kernels/cublas_shim.cu` did not provide, so shim-based CUDA builds failed
+  to load.
 
 This package:
 
