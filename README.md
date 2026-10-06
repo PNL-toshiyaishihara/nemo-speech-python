@@ -111,8 +111,15 @@ NEMO_SPEECH_VARIANT=cu128 CMAKE_ARGS="-DCMAKE_CUDA_ARCHITECTURES=86-real" \
 
 - Set `CMAKE_CUDA_ARCHITECTURES` explicitly; `native` needs a GPU. Each
   architecture adds substantial nvcc time. Release wheels use
-  `75-real;80-real;86-real;89-real;90-real;120` (Turing to Blackwell, plus
-  PTX for newer GPUs).
+  `75-real;80-real;86-real;89-real;90-real;100-real;120-real;90-virtual`:
+  native code for compute capability 7.5, 8.0, 8.6, 8.9, 9.0, 10.0 and 12.0
+  (Turing to Blackwell) and compute_90 PTX, which the driver compiles on
+  first use for any other newer GPU (for example 10.3). ggml-cuda builds a
+  plain `12X` (and, with upstream's patch series, `100` and `110`) as the
+  architecture-specific `12Xa`/`100a`/`110a`, whose code and PTX run only on
+  exactly that compute capability, so PTX for newer GPUs needs a plain
+  architecture such as `90-virtual`. `build_info()` reports the list as built
+  (`...;100a-real;120a-real;90-virtual`).
 - The wheel is self-contained apart from the NVIDIA driver: the repair step
   bundles the CUDA runtime, cuBLAS and cuBLASLt (about 600 MB), which are
   NVIDIA redistributables under the CUDA Toolkit EULA (shipped in

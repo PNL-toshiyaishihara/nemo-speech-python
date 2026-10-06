@@ -22,6 +22,39 @@ function(nsp_source_revision dir out_var)
     set(${out_var} "${json}" PARENT_SCOPE)
 endfunction()
 
+# CMAKE_CUDA_ARCHITECTURES as ggml-cuda compiles them. It replaces some plain
+# architectures with their architecture-specific "a" forms, whose code runs on
+# exactly that compute capability: 12X upstream, and also 100 and 110 with
+# NeMo-Speech.cpp's patch series. The rule is read from the ggml-cuda
+# CMakeLists.txt this build uses, so it follows patch updates.
+function(nsp_built_cuda_architectures out_var)
+    if(NEMO_SPEECH_LLAMA_CPP_SOURCE_DIR)
+        set(llama_cpp "${NEMO_SPEECH_LLAMA_CPP_SOURCE_DIR}")
+    elseif(NSP_PATCHED_LLAMA_CPP_DIR)
+        set(llama_cpp "${NSP_PATCHED_LLAMA_CPP_DIR}")
+    else()
+        set(llama_cpp "${NSP_UPSTREAM_DIR}/llama.cpp")
+    endif()
+    set(ggml_cuda "${llama_cpp}/ggml/src/ggml-cuda/CMakeLists.txt")
+    file(STRINGS "${ggml_cuda}" rule REGEX "if \\(ARCH MATCHES \"")
+    list(LENGTH rule count)
+    if(NOT count EQUAL 1 OR NOT rule MATCHES "MATCHES \"([^\"]+)\"")
+        message(FATAL_ERROR
+            "cannot find ggml-cuda's architecture rewrite in ${ggml_cuda}; "
+            "update nsp_built_cuda_architectures in cmake/build_info.cmake")
+    endif()
+    set(pattern "${CMAKE_MATCH_1}")
+    set(requested "$CACHE{CMAKE_CUDA_ARCHITECTURES}")
+    set(built "")
+    foreach(arch IN LISTS requested)
+        if(arch MATCHES "${pattern}")
+            string(REGEX REPLACE "^([0-9]+)" "\\1a" arch "${arch}")
+        endif()
+        list(APPEND built "${arch}")
+    endforeach()
+    set(${out_var} "${built}" PARENT_SCOPE)
+endfunction()
+
 function(nsp_json_bool value out_var)
     if(value)
         set(${out_var} true PARENT_SCOPE)
@@ -80,7 +113,9 @@ function(nsp_write_build_info out_file)
     if(GGML_CUDA)
         set(cuda "{}")
         string(JSON cuda SET "${cuda}" toolkit "\"${CUDAToolkit_VERSION}\"")
-        string(JSON cuda SET "${cuda}" architectures "\"$CACHE{CMAKE_CUDA_ARCHITECTURES}\"")
+        # What is compiled, not what was requested.
+        nsp_built_cuda_architectures(archs)
+        string(JSON cuda SET "${cuda}" architectures "\"${archs}\"")
         nsp_json_bool("${NEMO_SPEECH_CUBLAS_SHIM}" shim)
         string(JSON cuda SET "${cuda}" cublas_shim "${shim}")
         string(JSON info SET "${info}" cuda "${cuda}")

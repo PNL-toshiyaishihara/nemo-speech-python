@@ -29,6 +29,10 @@ def test_variant_matches_backend():
         assert info["backends"]["cuda"]
         major_minor = "".join(info["cuda"]["toolkit"].split(".")[:2])
         assert variant == f"cu{major_minor}"
+        # Recorded as built: the patched ggml-cuda compiles plain 100, 110 and
+        # 12X as their architecture-specific "a" forms.
+        archs = info["cuda"]["architectures"]
+        assert not re.search(r"(^|;)(100|110|12\d)(-real|-virtual)?(;|$)", archs), archs
         assert version("nemo-speech").endswith(f"+{variant}")
     elif variant == "vulkan":
         assert info["backends"]["vulkan"]
@@ -70,6 +74,23 @@ def test_variant_names(release_notes):
     assert release_notes.variant_name({"variant": "default", "backends": {"metal": True}}) == "CPU + Metal"
     assert release_notes.variant_name({"variant": "vulkan"}) == "Vulkan"
     assert release_notes.variant_name({"variant": "cu130", "cuda": {"toolkit": "13.0.88"}}) == "CUDA 13.0"
+
+
+@pytest.mark.parametrize(
+    "architectures, expected",
+    [
+        (
+            "75-real;80-real;86-real;89-real;90-real;100a-real;120a-real;90-virtual",
+            "compute capability 7.5, 8.0, 8.6, 8.9, 9.0, 10.0, 12.0; newer GPUs through PTX (9.0+)",
+        ),
+        ("86-real", "compute capability 8.6"),
+        ("75-real;120a", "compute capability 7.5, 12.0"),
+        ("90", "compute capability 9.0; newer GPUs through PTX (9.0+)"),
+        ("native", "native"),
+    ],
+)
+def test_cuda_targets(release_notes, architectures, expected):
+    assert release_notes.cuda_targets(architectures) == expected
 
 
 def test_prerelease_pattern(release_notes):

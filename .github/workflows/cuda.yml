@@ -14,10 +14,16 @@ on:
         description: CUDA toolkit version, major.minor.patch (Windows installer)
         type: string
         required: true
+      # The release list, used by release.yml and manual wheels.yml runs:
+      # native code for Turing (7.5) to Blackwell (10.0, 12.0) plus compute_90
+      # PTX, which the driver compiles for any other newer GPU. The patched
+      # ggml-cuda turns 100 and 12X into 100a and 12Xa, which run on exactly
+      # that compute capability, so the PTX must come from a plain
+      # architecture (as ggml's own default list does).
       archs:
         description: CMAKE_CUDA_ARCHITECTURES
         type: string
-        required: true
+        default: "75-real;80-real;86-real;89-real;90-real;100-real;120-real;90-virtual"
       platforms:
         description: JSON list of runners
         type: string

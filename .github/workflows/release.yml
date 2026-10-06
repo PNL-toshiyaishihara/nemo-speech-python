@@ -55,7 +55,8 @@ jobs:
     needs: sdist
     uses: ./.github/workflows/vulkan.yml
 
-  # Keep the toolkit and architecture lists in sync with wheels.yml.
+  # Keep the toolkit list in sync with wheels.yml. The architectures are
+  # cuda.yml's default.
   cuda:
     needs: sdist
     strategy:
@@ -65,7 +66,6 @@ jobs:
     uses: ./.github/workflows/cuda.yml
     with:
       cuda: ${{ matrix.cuda }}
-      archs: "75-real;80-real;86-real;89-real;90-real;120"
 
   publish:
     needs: [verify, sdist, cpu, vulkan, cuda]
