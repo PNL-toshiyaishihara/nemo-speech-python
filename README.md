@@ -107,8 +107,13 @@ CMAKE_ARGS="-DGGML_CUDA=ON -DCMAKE_CUDA_ARCHITECTURES=86-real" \
 
 - Set `CMAKE_CUDA_ARCHITECTURES` explicitly; `native` needs a GPU. Each
   architecture adds substantial nvcc time. Release wheels use
-  `75-real;80-real;86-real;89-real;90-real;120` (Turing to Blackwell, plus
-  PTX for newer GPUs).
+  `75-real;80-real;86-real;89-real;90-real;100-real;120-real;90-virtual`:
+  native code for compute capability 7.5 to 12.0 (Turing to Blackwell) and
+  compute_90 PTX, which the driver compiles for newer GPUs on first use.
+  ggml-cuda builds a plain `12X` as the architecture-specific `12Xa`, whose
+  code and PTX run only on exactly that compute capability, so PTX for newer
+  GPUs needs a plain architecture such as `90-virtual`. `build_info()`
+  reports the list as built.
 - The wheel is self-contained apart from the NVIDIA driver: the repair step
   bundles the CUDA runtime, cuBLAS and cuBLASLt (about 600 MB), which are
   NVIDIA redistributables under the CUDA Toolkit EULA (shipped in

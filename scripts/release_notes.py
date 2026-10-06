@@ -96,12 +96,40 @@ def variant_name(info: dict) -> str:
     return "CPU + Metal" if info.get("backends", {}).get("metal") else "CPU"
 
 
+def cuda_targets(architectures: str) -> str:
+    """Describe a built CMAKE_CUDA_ARCHITECTURES list in compute capabilities.
+
+    ``-real`` entries are native code for that capability, ``-virtual``
+    entries are PTX that the driver compiles for any later GPU, and a bare
+    entry is both. PTX of architecture- or family-specific targets (``120a``,
+    ``120f``) does not run on later GPUs, so only plain targets count as PTX.
+    """
+    native: List[Tuple[int, int]] = []
+    ptx: List[Tuple[int, int]] = []
+    for entry in filter(None, architectures.split(";")):
+        m = re.fullmatch(r"(\d+)(\d)([af]?)(?:-(real|virtual))?", entry)
+        if not m:
+            return architectures.replace(";", ", ")
+        capability = (int(m.group(1)), int(m.group(2)))
+        if m.group(4) != "virtual":
+            native.append(capability)
+        if m.group(4) != "real" and not m.group(3):
+            ptx.append(capability)
+    text = ", ".join(f"{major}.{minor}" for major, minor in sorted(native))
+    text = f"compute capability {text}" if text else ""
+    if ptx:
+        major, minor = min(ptx)
+        newer = f"newer GPUs through PTX ({major}.{minor}+)"
+        text = f"{text}; {newer}" if text else newer
+    return text
+
+
 def gpu_notes(info: dict) -> str:
     cuda = info.get("cuda")
     if cuda:
         major = cuda.get("toolkit", "").split(".")[0]
-        archs = cuda.get("architectures", "").replace(";", ", ")
-        return f"NVIDIA driver {DRIVERS.get(major, 'for CUDA ' + major)}+; {archs}"
+        targets = cuda_targets(cuda.get("architectures", ""))
+        return f"NVIDIA driver {DRIVERS.get(major, 'for CUDA ' + major)}+; {targets}"
     if info.get("variant") == "vulkan":
         return "GPU driver with Vulkan"
     return ""

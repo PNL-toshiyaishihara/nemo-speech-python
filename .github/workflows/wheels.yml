@@ -40,8 +40,8 @@ jobs:
     uses: ./.github/workflows/vulkan.yml
 
   # Full CUDA wheels (several hours of nvcc); manual runs only. cuda-smoke.yml
-  # covers native changes with a single architecture. Keep the toolkit and
-  # architecture lists in sync with release.yml.
+  # covers native changes with a single architecture. Keep the toolkit list
+  # in sync with release.yml. The architectures are cuda.yml's default.
   cuda:
     needs: sdist
     if: github.event_name == 'workflow_dispatch'
@@ -52,5 +52,4 @@ jobs:
     uses: ./.github/workflows/cuda.yml
     with:
       cuda: ${{ matrix.cuda }}
-      archs: "75-real;80-real;86-real;89-real;90-real;120"
       platforms: ${{ (inputs.target == 'cuda-windows' && '["windows-2022"]') || (inputs.target == 'cuda-linux' && '["ubuntu-24.04"]') || '["ubuntu-24.04", "windows-2022"]' }}
