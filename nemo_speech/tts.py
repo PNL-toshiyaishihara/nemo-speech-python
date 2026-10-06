@@ -113,6 +113,13 @@ class Synthesizer:
             status = C.nemo_speech_tts_create(ctypes.byref(cfg), ctypes.byref(handle))
         _check(status)
         self._handle = handle
+        # Fixed by the model; read once so the properties never wait for a
+        # synthesis holding the lock (e.g. while iterating stream()).
+        self._sample_rate = C.nemo_speech_tts_sample_rate(handle)
+        self._speakers = [
+            decode(C.nemo_speech_tts_speaker_name(handle, i))
+            for i in range(C.nemo_speech_tts_speaker_count(handle))
+        ]
 
     @classmethod
     def from_pretrained(cls, name: Optional[str] = None, **kwargs: Any) -> "Synthesizer":
@@ -131,16 +138,14 @@ class Synthesizer:
     @property
     def sample_rate(self) -> int:
         """Native output rate of the codec."""
-        return C.nemo_speech_tts_sample_rate(self._require_handle())
+        self._require_handle()
+        return self._sample_rate
 
     @property
     def speakers(self) -> List[str]:
         """Speaker names, in index order."""
-        handle = self._require_handle()
-        return [
-            decode(C.nemo_speech_tts_speaker_name(handle, i))
-            for i in range(C.nemo_speech_tts_speaker_count(handle))
-        ]
+        self._require_handle()
+        return list(self._speakers)
 
     # -- synthesis --
 
@@ -181,9 +186,11 @@ class Synthesizer:
 
     def _run(
         self,
-        invoke: Callable[[Any, Any], int],
+        invoke: Callable[[Any, Any, Any], int],
+        options: C.nemo_speech_tts_synthesis_options,
         on_audio: Optional[AudioCallback],
     ) -> SynthesisResult:
+        """Call ``invoke(handle, callback, stats)`` under the lock."""
         chunks: List[np.ndarray] = []
         errors: List[BaseException] = []
         cancelled = False
@@ -203,9 +210,13 @@ class Synthesizer:
 
         c_callback = C.nemo_speech_tts_pcm_callback(callback)
         stats = C.nemo_speech_tts_synthesis_stats_default()
+        # The handle is read under the lock: close() takes it too, so it cannot
+        # destroy the synthesizer between the check and the call.
         with self._lock:
-            status = invoke(c_callback, ctypes.byref(stats))
-            rate = stats.sample_rate or C.nemo_speech_tts_sample_rate(self._require_handle())
+            status = invoke(self._require_handle(), c_callback, ctypes.byref(stats))
+        # A cancelled synthesis returns before filling the stats, but the
+        # chunks it delivered were already resampled to the requested rate.
+        rate = stats.sample_rate or options.output_sample_rate or self._sample_rate
         if errors:
             raise errors[0]
         # Upstream's streaming codec path reports a callback cancellation as a
@@ -239,16 +250,16 @@ class Synthesizer:
         ``cancelled`` is set). ``sample_rate`` resamples the output
         (8000..native rate).
         """
-        handle = self._require_handle()
         options = self._options(
             language, voice, speaker, seed, steps, top_k, temperature, cfg_scale,
             sample_rate, request_id,
         )
         encoded = text.encode("utf-8")
         return self._run(
-            lambda cb, stats: C.nemo_speech_tts_synthesize_text(
+            lambda handle, cb, stats: C.nemo_speech_tts_synthesize_text(
                 handle, ctypes.byref(options), encoded, cb, None, stats
             ),
+            options,
             on_audio,
         )
 
@@ -260,7 +271,6 @@ class Synthesizer:
         **options: Any,
     ) -> SynthesisResult:
         """Synthesize pre-tokenized Magpie text tokens as a single chunk."""
-        handle = self._require_handle()
         opts = self._options(
             options.get("language"), options.get("voice"), options.get("speaker"),
             options.get("seed"), options.get("steps"), options.get("top_k"),
@@ -269,9 +279,10 @@ class Synthesizer:
         )
         array = (ctypes.c_int32 * len(tokens))(*tokens)
         return self._run(
-            lambda cb, stats: C.nemo_speech_tts_synthesize_tokens(
+            lambda handle, cb, stats: C.nemo_speech_tts_synthesize_tokens(
                 handle, ctypes.byref(opts), array, len(tokens), cb, None, stats
             ),
+            opts,
             on_audio,
         )
 
@@ -316,6 +327,11 @@ class Synthesizer:
     # -- lifetime --
 
     def close(self) -> None:
+        """Release the model, waiting for a synthesis running on another thread.
+
+        Do not call it from an ``on_audio`` callback: the synthesis waits for
+        the callback, so the two would wait for each other.
+        """
         with self._lock:
             if self._handle:
                 C.nemo_speech_tts_destroy(self._handle)
