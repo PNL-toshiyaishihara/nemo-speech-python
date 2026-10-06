@@ -43,6 +43,7 @@ How this project is built and changed. Releases and versioning are in
 ```bash
 git submodule update --init vendor/NeMo-Speech.cpp vendor/sentencepiece
 git -C vendor/NeMo-Speech.cpp submodule update --init --depth 1 llama.cpp
+git -C vendor/NeMo-Speech.cpp submodule update --init --recursive --depth 1 third_party/open_jtalk third_party/cppjieba
 python -m venv .venv && .venv/Scripts/python -m pip install .[test]   # bin/ on Linux and macOS
 .venv/Scripts/pytest
 ```

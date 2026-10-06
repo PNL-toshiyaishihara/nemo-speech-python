@@ -17,11 +17,13 @@ from ctypes import (
     c_void_p,
 )
 
+from .._data import use_bundled_tokenizer_data
 from .._loader import load_library
 from . import SizedStructure, ctypes_function_for
 
 _lib = load_library("nemo_speech_tts")
 ctypes_function = ctypes_function_for(_lib)
+use_bundled_tokenizer_data()
 
 # ---- Opaque handles ----
 

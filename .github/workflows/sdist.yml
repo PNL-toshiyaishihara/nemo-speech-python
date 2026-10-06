@@ -13,6 +13,9 @@ jobs:
         run: |
           git submodule update --init vendor/NeMo-Speech.cpp vendor/sentencepiece
           git -C vendor/NeMo-Speech.cpp submodule update --init --depth 1 llama.cpp
+          # Japanese/Mandarin TTS tokenizers (cppjieba has a nested submodule).
+          git -C vendor/NeMo-Speech.cpp submodule update --init --recursive --depth 1 \
+            third_party/open_jtalk third_party/cppjieba
           # Tags make the recorded revisions readable ("v0.2.0", not a hash).
           git -C vendor/NeMo-Speech.cpp fetch --quiet --tags origin
           git -C vendor/sentencepiece fetch --quiet --tags origin
