@@ -5,7 +5,7 @@ from __future__ import annotations
 import ctypes
 from typing import Any, List, Optional, Sequence, Union, overload
 
-from ._common import PathLike, decode, fsencode_or_none, status_checker
+from ._common import NativeHandle, PathLike, decode, fsencode_or_none, status_checker
 from ._paths import utf8_file_paths
 from .capi import nmt as C
 
@@ -21,6 +21,8 @@ def version() -> str:
 
 class Translator:
     """A loaded translation model. Safe to call from multiple threads.
+
+    :meth:`close` waits for the calls running on other threads.
 
     Args:
         model_path: Riva-Translate GGUF (see the upstream docs/nmt/models.md).
@@ -39,7 +41,7 @@ class Translator:
         max_new_tokens: Optional[int] = None,
         contexts: Optional[int] = None,
     ) -> None:
-        self._handle: Optional[ctypes.c_void_p] = None
+        self._native: Optional[NativeHandle] = None
         cfg = C.nemo_speech_nmt_translator_config()
         model = C.nemo_speech_nmt_model_config(
             path=fsencode_or_none(model_path), n_ctx=n_ctx or 0
@@ -58,7 +60,7 @@ class Translator:
         with utf8_file_paths():
             status = C.nemo_speech_nmt_create(ctypes.byref(cfg), ctypes.byref(handle))
         _check(status)
-        self._handle = handle
+        self._native = NativeHandle(handle, C.nemo_speech_nmt_destroy, "Translator")
 
     @overload
     def translate(self, texts: str, source_language: str, target_language: str) -> str: ...
@@ -79,7 +81,7 @@ class Translator:
         Languages are two-letter codes ("en", "ja") or the model's pair tag
         ("en-ja"). Unsupported pairs raise :class:`NemoSpeechError`.
         """
-        if not self._handle:
+        if self._native is None:
             raise RuntimeError("Translator is closed")
         single = isinstance(texts, str)
         items = [texts] if single else list(texts)
@@ -87,16 +89,17 @@ class Translator:
             return []
         array = (ctypes.c_char_p * len(items))(*(t.encode("utf-8") for t in items))
         result = C.nemo_speech_nmt_result_p()
-        _check(
-            C.nemo_speech_nmt_translate(
-                self._handle,
-                array,
-                len(items),
-                source_language.encode(),
-                target_language.encode(),
-                ctypes.byref(result),
+        with self._native.use() as handle:
+            _check(
+                C.nemo_speech_nmt_translate(
+                    handle,
+                    array,
+                    len(items),
+                    source_language.encode(),
+                    target_language.encode(),
+                    ctypes.byref(result),
+                )
             )
-        )
         try:
             out = [
                 decode(C.nemo_speech_nmt_result_text(result, i))
@@ -107,9 +110,9 @@ class Translator:
         return out[0] if single else out
 
     def close(self) -> None:
-        if self._handle:
-            C.nemo_speech_nmt_destroy(self._handle)
-            self._handle = None
+        """Release the model, waiting for calls running on other threads."""
+        if self._native is not None:
+            self._native.close()
 
     def __enter__(self) -> "Translator":
         return self
