@@ -4,7 +4,8 @@
 # The local version label follows the toolkit (+cu128 for 12.8, +cu130 for
 # 13.0). The repair step bundles the CUDA runtime, cuBLAS and cuBLASLt so a
 # wheel needs only the NVIDIA driver (libcuda.so.1 / nvcuda.dll), which is
-# never bundled.
+# never bundled. With cublas_shim, upstream's shim takes cuBLAS's library name
+# inside the wheel, so the repair step bundles neither cuBLAS nor cuBLASLt.
 name: cuda
 
 on:
@@ -32,6 +33,12 @@ on:
         description: Upload the wheels as artifacts (about 700 MB each)
         type: boolean
         default: true
+      # Release wheels bundle the real cuBLAS. The shim is much smaller, but
+      # its speed against cuBLAS has not been measured on a GPU yet.
+      cublas_shim:
+        description: Use upstream's cuBLAS shim instead of bundling cuBLAS
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -61,12 +68,18 @@ jobs:
           # CUDA 13 split the C runtime headers and NVVM out of the nvcc component.
           components="nvcc_$mm cudart_$mm cublas_$mm cublas_dev_$mm thrust_$mm visual_studio_integration_$mm"
           if [ "$major" -ge 13 ]; then components="$components crt_$mm nvvm_$mm"; fi
+          # ggml-cuda still links the toolkit's cuBLAS with the shim, so the
+          # components stay the same. The wheel keeps its +cuXY name; the
+          # artifact name and build_info() tell a shim build apart.
+          if [ "${{ inputs.cublas_shim }}" = true ]; then shim=ON; suffix=-shim; else shim=OFF; suffix=; fi
           {
             echo "mm=$mm"
             echo "dash=${major}-${minor}"
             echo "underscore=${major}_${minor}"
             echo "variant=cu${major}${minor}"
             echo "components=$components"
+            echo "shim=$shim"
+            echo "suffix=$suffix"
           } >> "$GITHUB_OUTPUT"
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
@@ -122,10 +135,10 @@ jobs:
             NEMO_SPEECH_VARIANT=${{ steps.cuda.outputs.variant }}
             CUDACXX=/usr/local/cuda-${{ steps.cuda.outputs.mm }}/bin/nvcc
             PATH=/usr/local/cuda-${{ steps.cuda.outputs.mm }}/bin:$PATH
-            CMAKE_ARGS="-DCMAKE_CUDA_ARCHITECTURES=${{ inputs.archs }}"
+            CMAKE_ARGS="-DCMAKE_CUDA_ARCHITECTURES=${{ inputs.archs }} -DNEMO_SPEECH_CUBLAS_SHIM=${{ steps.cuda.outputs.shim }}"
           CIBW_ENVIRONMENT_WINDOWS: >-
             NEMO_SPEECH_VARIANT=${{ steps.cuda.outputs.variant }}
-            CMAKE_ARGS="-DCMAKE_CUDA_ARCHITECTURES=${{ inputs.archs }}"
+            CMAKE_ARGS="-DCMAKE_CUDA_ARCHITECTURES=${{ inputs.archs }} -DNEMO_SPEECH_CUBLAS_SHIM=${{ steps.cuda.outputs.shim }}"
           CIBW_REPAIR_WHEEL_COMMAND_LINUX: auditwheel repair --exclude libcuda.so.1 -w {dest_dir} {wheel}
           CIBW_REPAIR_WHEEL_COMMAND_WINDOWS: >-
             delvewheel repair --analyze-existing --ignore-existing --exclude nvcuda.dll -w {dest_dir} {wheel}
@@ -140,5 +153,5 @@ jobs:
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         if: inputs.upload
         with:
-          name: wheels-${{ steps.cuda.outputs.variant }}-${{ matrix.os }}
+          name: wheels-${{ steps.cuda.outputs.variant }}${{ steps.cuda.outputs.suffix }}-${{ matrix.os }}
           path: wheelhouse/*.whl

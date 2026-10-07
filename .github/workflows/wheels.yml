@@ -19,6 +19,10 @@ on:
         type: choice
         default: all
         options: [all, "12.8", "13.0"]
+      cublas_shim:
+        description: CUDA targets use upstream's cuBLAS shim instead of bundling cuBLAS
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -56,3 +60,4 @@ jobs:
     with:
       cuda: ${{ matrix.cuda }}
       platforms: ${{ (inputs.target == 'cuda-windows' && '["windows-2022"]') || (inputs.target == 'cuda-linux' && '["ubuntu-24.04"]') || '["ubuntu-24.04", "windows-2022"]' }}
+      cublas_shim: ${{ inputs.cublas_shim || false }}

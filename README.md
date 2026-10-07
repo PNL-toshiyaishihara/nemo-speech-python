@@ -134,7 +134,9 @@ NEMO_SPEECH_VARIANT=cu128 CMAKE_ARGS="-DCMAKE_CUDA_ARCHITECTURES=86-real" \
   with a message saying so.
 - `-DNEMO_SPEECH_CUBLAS_SHIM=ON` replaces cuBLAS with upstream's in-tree
   shim (native GEMM, no cuBLASLt), which makes the wheel roughly 600 MB
-  smaller. Release wheels bundle the real cuBLAS. The build refuses the shim
+  smaller. Release wheels bundle the real cuBLAS, because the shim's speed
+  against cuBLAS has not been measured on a GPU yet; manual `wheels.yml` runs
+  can build shim wheels with `cublas_shim`. The build refuses the shim
   if it does not export every cuBLAS function the pinned ggml-cuda calls
   (upstream before v0.2.0 lacked two of them).
 - Windows: nvcc cannot use a `%TEMP%` path with non-ASCII characters (for
@@ -257,7 +259,7 @@ auditwheel/delvewheel/delocate. Builds are tiered by cost:
 |---|---|---|
 | `wheels.yml` | every push to `main` and every PR | CPU wheels (Linux x86_64/aarch64, Windows x64, macOS arm64) and the Windows Vulkan wheel, each tested on Python 3.10 to 3.14 |
 | `cuda-smoke.yml` | every push to `main` and every PR; builds only when the change touches `vendor/`, `CMakeLists.txt`, `cmake/`, `patches/`, `licenses/`, `pyproject.toml`, the loader or the CUDA workflows | CUDA 12.8 and 13.0 wheels for one architecture (sm_86), Linux tested against the driver stub; nothing uploaded. Its final `cuda-smoke` job passes when the build passed or was not needed, so it can be a required check |
-| `wheels.yml` manual run | on demand | adds the full CUDA wheels; `target` picks `cuda`, `cuda-windows` or `cuda-linux`, `cuda` picks `12.8` or `13.0` |
+| `wheels.yml` manual run | on demand | adds the full CUDA wheels; `target` picks `cuda`, `cuda-windows` or `cuda-linux`, `cuda` picks `12.8` or `13.0`, `cublas_shim` builds them with upstream's cuBLAS shim instead of cuBLAS (artifacts `wheels-cuXY-shim-*`) |
 | `release.yml` | tags `v*` | every variant, then a draft GitHub Release with notes and `SHA256SUMS` (see [RELEASING.md](RELEASING.md)) |
 
 Python-only changes cannot break the CUDA build (the bindings use ctypes),
