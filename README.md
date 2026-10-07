@@ -214,13 +214,42 @@ models.download("magpie", companions=True)   # {"tts": ..., "tokenizer": ..., "c
 
 | | CPU wheel, `gpu=-1` | Vulkan wheel, `gpu=0` |
 |---|---|---|
-| ASR offline, 11 s clip (nemotron-3.5 q8_0) | 4.1 s (RTF 0.37) | 8.5 s (RTF 0.78) |
+| ASR offline, 11 s clip (nemotron-3.5 q8_0) | 3.4 s (RTF 0.31) | 4.4 s (RTF 0.40); 2.3 s (RTF 0.21) with `rnnt_right_context=-1` |
 | TTS (MagpieTTS) | RTF 1.51 | RTF 1.51 (runs on the CPU) |
 | NMT, one sentence (Riva-Translate 4B Q4_K_M) | 4.8 s | 1.7 s |
 
-On this integrated GPU, Vulkan helps NMT but slows ASR down: upstream's fused
-attention operations are CUDA-only, so the graph is split between the GPU and
-the CPU. With the Vulkan wheel, pass `gpu=-1` to the recognizer.
+ASR times are medians of five calls after a warm-up call, with the 0.1.0
+wheels; the first call takes 1 to 2 s longer.
+
+The Vulkan wheel runs offline recognition with cache-aware RNNT models (the
+nemotron models) through upstream's streaming graph (see Known issues). It
+advances by `rnnt_right_context` + 1 encoder frames of 80 ms per pass, and
+the library default of 1 gives 160 ms passes: about 70 encoder passes, one
+after another, for this clip, each costing about the same whatever its
+length. The CPU runs the clip as one offline pass. Longer passes make Vulkan
+faster than the CPU:
+
+| `rnnt_right_context` | Pass | Vulkan wheel, `gpu=0` |
+|---|---|---|
+| 1 (library default) | 160 ms | 4.4 s (RTF 0.40) |
+| -1 (the model's value, 3 for nemotron-3.5) | 320 ms | 2.3 s (RTF 0.21) |
+| 6 | 560 ms | 1.6 s (RTF 0.14) |
+| 13 | 1120 ms | 2.1 s (RTF 0.19) |
+
+```python
+from nemo_speech import Recognizer
+from nemo_speech.capi.asr import nemo_speech_asr_streaming_config
+
+streaming = nemo_speech_asr_streaming_config(
+    chunk_size=0.16, ctc_left_padding=1.92, ctc_right_padding=1.92,  # every field applies
+    rnnt_right_context=-1,
+)
+asr = Recognizer.from_pretrained("nemotron-3.5", gpu=0, streaming=streaming)
+```
+
+nemotron-3.5 is trained for 0, 1, 3, 6 and 13; `-1` gives the look-ahead of
+the CPU's offline pass. The setting also applies to `stream()`, where the pass
+length is latency.
 
 ### Runtime requirements
 
@@ -317,6 +346,15 @@ and worked around here):
 - **`interim_results` is ignored by the C ABI.** Only upstream's gRPC server
   filters partial results; `RecognitionStream` drops them itself when
   `interim_results=False`.
+- **Offline RNNT recognition on Vulkan streams.** With a Vulkan GPU, upstream
+  runs `transcribe()` with cache-aware RNNT models (the nemotron models)
+  through the streaming graph, with the streaming look-ahead
+  (`rnnt_right_context`, default 1 frame) instead of the model's offline one
+  (3 frames for nemotron-3.5). Transcripts then differ from the CPU's, and
+  recognition is slow. `rnnt_right_context=-1` (shown under Performance)
+  restores the model's look-ahead and the speed; the transcripts come closer
+  to the CPU's but still go through the streaming graph. CTC models and
+  offline-only transducers (parakeet) keep the offline graph.
 
 This package:
 
