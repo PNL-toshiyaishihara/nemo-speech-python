@@ -11,7 +11,7 @@ on:
   workflow_call:
     inputs:
       cuda:
-        description: CUDA toolkit version, major.minor.patch (Windows installer)
+        description: CUDA toolkit version, major.minor.patch (Windows installer, whose SHA-256 must be listed below)
         type: string
         required: true
       # The release list, used by release.yml and manual wheels.yml runs:
@@ -81,8 +81,18 @@ jobs:
           CUDA_UNDERSCORE: ${{ steps.cuda.outputs.underscore }}
           CUDA_COMPONENTS: ${{ steps.cuda.outputs.components }}
         run: |
+          # SHA-256 of the network installer per release, checked against the
+          # MD5 in NVIDIA's docs/sidebar/md5sum.txt when added. The installer
+          # then downloads the components itself.
+          $sha256 = @{
+            "12.8.1" = "779bee8ff557255c1cf5f36e0230f081675b9bb41e44be38839920cd5209bdeb"
+            "13.0.2" = "00c03dcc82007bc1c323c50d64bc2c25bdcffb1846a187889a3b86f6a3050841"
+          }[$env:CUDA_FULL]
+          if (-not $sha256) { throw "No SHA-256 for the CUDA $env:CUDA_FULL Windows installer; add it to cuda.yml" }
           $installer = "$env:RUNNER_TEMP\cuda-network.exe"
           Invoke-WebRequest "https://developer.download.nvidia.com/compute/cuda/$env:CUDA_FULL/network_installers/cuda_$($env:CUDA_FULL)_windows_network.exe" -OutFile $installer
+          $actual = (Get-FileHash $installer -Algorithm SHA256).Hash
+          if ($actual -ne $sha256) { throw "CUDA installer SHA-256 is $actual, expected $sha256" }
           $p = Start-Process $installer -Wait -PassThru -ArgumentList "-s $env:CUDA_COMPONENTS"
           if ($p.ExitCode -ne 0) { throw "CUDA installer exited with $($p.ExitCode)" }
           $cuda = "C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v$env:CUDA_MM"
@@ -105,10 +115,20 @@ jobs:
           output-dir: wheelhouse
         env:
           CIBW_ARCHS_LINUX: x86_64
+          # NVIDIA's repository is written here instead of fetched as a .repo
+          # file, so dnf checks every package against a pinned key. The SHA-256
+          # is that of D42D0685.pub without its Version line, as NVIDIA pins it
+          # in NVIDIA/gpu-driver-container.
           CIBW_BEFORE_ALL_LINUX: >-
             git config --global --add safe.directory '*' &&
-            dnf install -y dnf-plugins-core &&
-            dnf config-manager --add-repo https://developer.download.nvidia.com/compute/cuda/repos/rhel8/x86_64/cuda-rhel8.repo &&
+            curl -fsSL https://developer.download.nvidia.com/compute/cuda/repos/rhel8/x86_64/D42D0685.pub
+            | sed '/^Version/d' > /etc/pki/rpm-gpg/RPM-GPG-KEY-NVIDIA &&
+            echo "d0664fbbdb8c32356d45de36c5984617217b2d0bef41b93ccecd326ba3b80c87  /etc/pki/rpm-gpg/RPM-GPG-KEY-NVIDIA"
+            | sha256sum -c --strict - &&
+            printf '%s\n' '[cuda-rhel8-x86_64]' 'name=cuda-rhel8-x86_64'
+            'baseurl=https://developer.download.nvidia.com/compute/cuda/repos/rhel8/x86_64'
+            'enabled=1' 'gpgcheck=1' 'gpgkey=file:///etc/pki/rpm-gpg/RPM-GPG-KEY-NVIDIA'
+            > /etc/yum.repos.d/cuda-rhel8.repo &&
             dnf install -y
             cuda-nvcc-${{ steps.cuda.outputs.dash }}
             cuda-cudart-devel-${{ steps.cuda.outputs.dash }}

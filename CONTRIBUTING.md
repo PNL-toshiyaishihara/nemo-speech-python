@@ -47,6 +47,10 @@ How this project is built and changed. Releases and versioning are in
   comment (`uses: owner/action@<sha> # v1.2.3`); Dependabot keeps the pins
   current. Every workflow declares `permissions: contents: read`; a job that
   needs more raises it for that job alone, as `release.yml`'s `publish` does.
+- What CI downloads outside pip is checked against a pinned SHA-256: the
+  CUDA installers (`cuda.yml`), the Vulkan SDK (`vulkan.yml`) and NVIDIA's
+  package signing key. A version bump there includes the new hash, checked
+  against the vendor's published checksums.
 
 ## Development setup
 
