@@ -1,0 +1,7 @@
+# Blank issues stay available for questions and anything else; there is no
+# Discussions forum.
+blank_issues_enabled: true
+contact_links:
+  - name: Report a security vulnerability
+    url: https://github.com/PNL-toshiyaishihara/nemo-speech-python/security/advisories/new
+    about: Report it privately, not in a public issue (see SECURITY.md).
