@@ -1,0 +1,75 @@
+# Exact versions of every package CI installs from PyPI to build the sdist
+# and the wheels, so a new release of any of them (broken or compromised)
+# reaches a build only through a reviewed update of this file. Dependabot
+# proposes updates after a seven-day cooldown (.github/dependabot.yml).
+#
+# Applied as PIP_CONSTRAINT and PIP_BUILD_CONSTRAINT (pip 26.2+ uses only the
+# latter for isolated builds) by sdist.yml and the wheel jobs, as
+# cibuildwheel's dependency-versions file (replacing its own pins), and
+# inside the Linux containers as /constraints.txt.
+#
+# Regenerate with uv, cutting off releases newer than a week, then delete the
+# cibuildwheel line (the action's pinned commit decides that version):
+#   uv pip compile --universal --python-version 3.10 --exclude-newer <date> \
+#     --no-header --no-annotate - <<'IN'
+#   pip
+#   build
+#   virtualenv
+#   delocate
+#   delvewheel==1.13.1
+#   abi3audit
+#   cibuildwheel==<action version> ; python_version >= "3.11"
+#   hatchling
+#   scikit-build-core
+#   cmake
+#   ninja
+#   IN
+abi3audit==0.0.26
+abi3info==2026.9.25
+altgraph==0.17.5
+attrs==26.1.0
+bashlex==0.18 ; python_full_version >= '3.11'
+bracex==3.0.1 ; python_full_version >= '3.11'
+build==1.6.1
+cattrs==26.2.1
+certifi==2026.7.22
+charset-normalizer==3.5.2
+cmake==4.4.3
+colorama==0.4.6 ; os_name == 'nt'
+delocate==0.13.0
+delvewheel==1.13.1
+dependency-groups==1.3.2 ; python_full_version >= '3.11'
+distlib==0.4.3
+exceptiongroup==1.3.1 ; python_full_version < '3.11'
+filelock==4.0.7
+hatchling==1.32.4
+humanize==4.16.0 ; python_full_version >= '3.11'
+idna==3.20
+importlib-metadata==9.0.1 ; python_full_version < '3.10.2'
+kaitaistruct==0.11
+macholib==1.16.4
+markdown-it-py==4.2.0
+mdurl==0.1.2
+ninja==1.13.2
+packaging==26.3
+pathspec==1.1.1
+pefile==2024.8.26
+pip==26.2.1
+platformdirs==4.12.2
+pluggy==1.6.0
+pyelftools==0.33
+pygments==2.21.0
+pyproject-hooks==1.3.3
+python-discovery==1.6.1
+requests==2.34.2
+requests-cache==1.3.3
+rich==15.0.0
+scikit-build-core==1.1.0
+tomli==2.4.1 ; python_full_version < '3.11'
+tomlkit==0.15.1
+trove-classifiers==2026.9.21.13
+typing-extensions==4.16.0
+url-normalize==3.0.1
+urllib3==2.8.0
+virtualenv==21.14.1
+zipp==4.1.0 ; python_full_version < '3.10.2'

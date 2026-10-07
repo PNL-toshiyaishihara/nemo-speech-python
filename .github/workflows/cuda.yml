@@ -49,7 +49,18 @@ jobs:
       # cibuildwheel unpacks the sdist under %TEMP%; nested ExternalProject
       # trees would push MSBuild paths past MAX_PATH there.
       CIBW_CONFIG_SETTINGS_WINDOWS: build-dir=C:/b
+      # Every PyPI install is pinned (see the file); cibuildwheel copies it
+      # into the Linux container as /constraints.txt (CIBW_ENVIRONMENT_LINUX).
+      PIP_CONSTRAINT: ${{ github.workspace }}/.github/build-constraints.txt
+      PIP_BUILD_CONSTRAINT: ${{ github.workspace }}/.github/build-constraints.txt
+      CIBW_DEPENDENCY_VERSIONS: ${{ github.workspace }}/.github/build-constraints.txt
     steps:
+      # Only the build constraints; the build itself uses the sdist.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          sparse-checkout: .github/build-constraints.txt
+          sparse-checkout-cone-mode: false
+          persist-credentials: false
       - name: Derive the CUDA names
         id: cuda
         shell: bash
@@ -143,6 +154,8 @@ jobs:
             CUDACXX=/usr/local/cuda-${{ steps.cuda.outputs.mm }}/bin/nvcc
             PATH=/usr/local/cuda-${{ steps.cuda.outputs.mm }}/bin:$PATH
             CMAKE_ARGS="-DCMAKE_CUDA_ARCHITECTURES=${{ inputs.archs }}"
+            PIP_CONSTRAINT=/constraints.txt
+            PIP_BUILD_CONSTRAINT=/constraints.txt
           CIBW_ENVIRONMENT_WINDOWS: >-
             NEMO_SPEECH_VARIANT=${{ steps.cuda.outputs.variant }}
             CMAKE_ARGS="-DCMAKE_CUDA_ARCHITECTURES=${{ inputs.archs }}"

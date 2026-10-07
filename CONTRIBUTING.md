@@ -51,6 +51,11 @@ How this project is built and changed. Releases and versioning are in
   CUDA installers (`cuda.yml`), the Vulkan SDK (`vulkan.yml`) and NVIDIA's
   package signing key. A version bump there includes the new hash, checked
   against the vendor's published checksums.
+- What CI installs from PyPI to build (cibuildwheel and its tools,
+  scikit-build-core, CMake, Ninja, `build`) is pinned in
+  `.github/build-constraints.txt`. Dependabot updates it monthly; when its
+  inputs change (a new tool, a cibuildwheel update that needs newer
+  dependencies), regenerate it with the command in its header.
 
 ## Development setup
 

@@ -17,7 +17,17 @@ jobs:
       # https://vulkan.lunarg.com/sdk/sha/<version>/windows/<file>.txt
       VULKAN_SDK_SHA256: bcf2d75aa9556889ab974858666e20b3655b6055a0db704ccb47279ff33b5bfe
       CIBW_CONFIG_SETTINGS_WINDOWS: build-dir=C:/b
+      # Every PyPI install is pinned (see the file).
+      PIP_CONSTRAINT: ${{ github.workspace }}/.github/build-constraints.txt
+      PIP_BUILD_CONSTRAINT: ${{ github.workspace }}/.github/build-constraints.txt
+      CIBW_DEPENDENCY_VERSIONS: ${{ github.workspace }}/.github/build-constraints.txt
     steps:
+      # Only the build constraints; the build itself uses the sdist.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          sparse-checkout: .github/build-constraints.txt
+          sparse-checkout-cone-mode: false
+          persist-credentials: false
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: sdist

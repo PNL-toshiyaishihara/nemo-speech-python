@@ -1,5 +1,6 @@
 # Dependabot: weekly version updates for the GitHub Actions the workflows use,
-# and only security updates for the Python requirements, which are a library's
+# monthly ones for the pinned build tools (.github/build-constraints.txt), and
+# only security updates for the Python requirements, which are a library's
 # lower bounds. Every PR is labelled `ci` for the release notes. The vendored
 # submodules are updated by hand (RELEASING.md): Dependabot would follow their
 # branch heads, not upstream release tags.
@@ -17,6 +18,24 @@ updates:
       actions:
         patterns: ["*"]
         update-types: [minor, patch]
+    labels: [ci]
+
+  # The build tools CI installs from PyPI. Monthly, since some of the ~50
+  # packages release every week and each update PR runs the CUDA builds;
+  # security updates still come at once.
+  - package-ecosystem: pip
+    directory: /.github
+    schedule:
+      interval: monthly
+    cooldown:
+      default-days: 7
+    groups:
+      build-tools:
+        patterns: ["*"]
+        update-types: [minor, patch]
+    ignore:
+      # Also pinned in pyproject.toml's before-build; updated deliberately.
+      - dependency-name: delvewheel
     labels: [ci]
 
   - package-ecosystem: pip
