@@ -29,6 +29,10 @@ jobs:
         # file in every wheel built from it (nemo_speech.build_info()).
         run: python3 scripts/source_revisions.py > vendor/revisions.json
       - name: Build sdist
+        env:
+          # build and the build backend come pinned (see the file).
+          PIP_CONSTRAINT: ${{ github.workspace }}/.github/build-constraints.txt
+          PIP_BUILD_CONSTRAINT: ${{ github.workspace }}/.github/build-constraints.txt
         run: pipx run build --sdist
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:

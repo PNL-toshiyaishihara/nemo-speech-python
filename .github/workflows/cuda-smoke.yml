@@ -39,7 +39,7 @@ jobs:
           # The PR's base, or the previous tip of main.
           BASE: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.before }}
         run: |
-          native_inputs='^(vendor/|CMakeLists\.txt$|cmake/|patches/|licenses/|pyproject\.toml$|nemo_speech/_loader\.py$|scripts/source_revisions\.py$|\.github/workflows/(sdist|cuda|cuda-smoke)\.yml$)'
+          native_inputs='^(vendor/|CMakeLists\.txt$|cmake/|patches/|licenses/|pyproject\.toml$|nemo_speech/_loader\.py$|scripts/source_revisions\.py$|\.github/build-constraints\.txt$|\.github/workflows/(sdist|cuda|cuda-smoke)\.yml$)'
           if ! git cat-file -e "${BASE}^{commit}" 2>/dev/null; then
             echo "Base ${BASE:-none} unknown; building"
             native=true
