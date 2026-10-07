@@ -5,8 +5,8 @@ test models) and [RELEASING.md](RELEASING.md) (versioning, labels, release
 steps) before changing anything. The rules that are easiest to get wrong:
 
 - Never modify `vendor/` (submodules). Work around upstream problems in this
-  repository and record them as `upstream` issues; do not propose changes
-  upstream.
+  repository and record them as `upstream` issues, adding `workaround-here`
+  once a workaround is merged; do not propose changes upstream.
 - Wheels must work on their own: bundle native libraries, depend only on
   Python wheels.
 - All changes go through branches and PRs into `main`; label every PR.
