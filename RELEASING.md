@@ -55,6 +55,9 @@ A release therefore has 11 assets: 9 wheels, the sdist and `SHA256SUMS`.
   | `documentation` | Documentation |
   | `skip-changelog` | left out (version bumps, release chores) |
 
+- Dependabot opens PRs for GitHub Actions updates (weekly) and Python
+  security updates, labelled `ci` by `.github/dependabot.yml`. It does not
+  touch the submodules.
 - Maintenance branches (`release/0.2`) only if an old line ever needs a fix.
 
 ## Making a release
