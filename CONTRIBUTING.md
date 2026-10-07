@@ -43,6 +43,10 @@ How this project is built and changed. Releases and versioning are in
   retargeting them.
 - Updating NeMo-Speech.cpp: one PR per update, preferably to an upstream
   release tag, labelled `dependencies`.
+- Workflows pin every action to a full commit SHA, with its version in a
+  comment (`uses: owner/action@<sha> # v1.2.3`); Dependabot keeps the pins
+  current. Every workflow declares `permissions: contents: read`; a job that
+  needs more raises it for that job alone, as `release.yml`'s `publish` does.
 
 ## Development setup
 

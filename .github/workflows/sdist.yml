@@ -4,11 +4,16 @@ name: sdist
 on:
   workflow_call:
 
+permissions:
+  contents: read
+
 jobs:
   sdist:
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
       - name: Check out the submodules the build needs
         run: |
           git submodule update --init vendor/NeMo-Speech.cpp vendor/sentencepiece
@@ -25,7 +30,7 @@ jobs:
         run: python3 scripts/source_revisions.py > vendor/revisions.json
       - name: Build sdist
         run: pipx run build --sdist
-      - uses: actions/upload-artifact@v7
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: sdist
           path: dist/*.tar.gz
