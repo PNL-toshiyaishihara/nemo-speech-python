@@ -1,0 +1,28 @@
+# Dependabot: weekly version updates for the GitHub Actions the workflows use,
+# and only security updates for the Python requirements, which are a library's
+# lower bounds. Every PR is labelled `ci` for the release notes. The vendored
+# submodules are updated by hand (RELEASING.md): Dependabot would follow their
+# branch heads, not upstream release tags.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    # Let a new action release settle for a week before adopting it.
+    cooldown:
+      default-days: 7
+    # Minor and patch updates share one PR; each major update gets its own.
+    groups:
+      actions:
+        patterns: ["*"]
+        update-types: [minor, patch]
+    labels: [ci]
+
+  - package-ecosystem: pip
+    directory: /
+    schedule:
+      interval: weekly
+    # Zero disables version updates; security updates still open PRs.
+    open-pull-requests-limit: 0
+    labels: [ci]
