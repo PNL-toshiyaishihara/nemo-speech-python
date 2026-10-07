@@ -20,6 +20,9 @@ on:
         default: all
         options: [all, "12.8", "13.0"]
 
+permissions:
+  contents: read
+
 # Per event, so a push never cancels a long manual run.
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}-${{ github.event_name }}
