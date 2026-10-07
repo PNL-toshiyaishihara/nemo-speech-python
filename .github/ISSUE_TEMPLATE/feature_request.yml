@@ -1,0 +1,17 @@
+name: Feature request
+description: Suggest a new feature or a change.
+labels: [enhancement]
+body:
+  - type: textarea
+    id: use-case
+    attributes:
+      label: What you want to do
+      description: The use case, and what is missing or hard today.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposal
+      description: |
+        How it could work. The bindings use only NeMo-Speech.cpp's stable C ABI, so a feature the C ABI does not offer has to come from upstream first.
