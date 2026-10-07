@@ -95,7 +95,8 @@ the tag of a published release; release a new patch version instead.
 - One PR per update, labelled `dependencies`. Changes under `vendor/` trigger
   `cuda-smoke.yml` (single-architecture CUDA builds for both toolkits) in
   addition to the regular CI.
-- Check the `upstream` issues: workarounds for bugs fixed upstream can go.
+- Check the open `upstream` issues and close those fixed upstream. Those
+  also labelled `workaround-here` have a workaround here, which goes first.
 
 ## What the notes contain
 

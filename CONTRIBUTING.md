@@ -19,8 +19,14 @@ How this project is built and changed. Releases and versioning are in
    `patches/llama.cpp/`, or the Python layer.
 3. **Record upstream defects as issues** labelled `upstream`: the symptom,
    a permalink to the upstream code, the workaround here, a possible upstream
-   fix, and a checklist. When an update of the submodule fixes one, remove
-   the workaround and close the issue.
+   fix, and a checklist. Once a workaround is merged, also label the issue
+   `workaround-here`, even if it covers only part of the problem (the issue
+   then says what remains). Without that label, nothing here avoids the
+   defect; a documented manual step does not count. When an update of the
+   submodule fixes one, remove the workaround and close the issue, keeping
+   its labels; if only the workaround goes, remove `workaround-here`. Both
+   labels are for issues only: on a PR they would put it under "Other
+   changes" in the release notes.
 4. **Only the stable C ABI.** The bindings use `include/nemo_speech/*.h`
    through ctypes; `nemo_speech/capi/` mirrors the headers one-to-one, and
    `tests/test_capi_abi.py` fails when they drift apart.
