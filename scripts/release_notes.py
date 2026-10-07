@@ -3,7 +3,8 @@
 Everything about the build comes from the wheels themselves: each one carries
 nemo_speech/_build_info.json (see cmake/build_info.cmake). The change list
 comes from GitHub's generated release notes, which group merged PRs by label
-(.github/release.yml).
+(.github/release.yml); a first final release combines those of its
+pre-releases.
 
     python scripts/release_notes.py --tag v0.1.0 --dist dist > notes.md
 
@@ -49,15 +50,76 @@ def previous_tag(tag: str) -> Optional[str]:
     return None
 
 
-def generated_changes(repo: str, tag: str, previous: Optional[str]) -> str:
+def changelog_ranges(
+    tag: str, previous: Optional[str], tags: List[str]
+) -> List[Tuple[str, Optional[str]]]:
+    """(tag, previous tag) pairs whose generated notes together cover `tag`.
+
+    `tags` are the release tags merged into `tag`, oldest first. Without a
+    previous tag, GitHub starts the notes at the latest release before `tag`,
+    so the first final release after pre-releases would list only the changes
+    since the last of them; it gets one range per earlier release instead.
+    """
+    if previous:
+        return [(tag, previous)]
+    chain = [t for t in tags if t != tag] + [tag]
+    return [(t, chain[i - 1] if i else None) for i, t in enumerate(chain)]
+
+
+def changelog_categories() -> List[str]:
+    """Category titles of the generated notes, in .github/release.yml order."""
+    config = pathlib.Path(__file__).resolve().parents[1] / ".github" / "release.yml"
+    return re.findall(r"^\s*- title: (.+?)\s*$", config.read_text(encoding="utf-8"), re.M)
+
+
+def merge_changes(bodies: List[str], categories: List[str], full_changelog: str) -> str:
+    """Combine generated notes: each category's entries, then new contributors."""
+    entries: Dict[str, List[str]] = {}
+    contributors: List[str] = []
+    for body in bodies:
+        section, category = "", ""
+        for line in body.splitlines():
+            if line.startswith("## "):
+                section, category = line[3:].strip(), ""
+            elif line.startswith("### "):
+                category = line[4:].strip()
+            elif line.startswith("* "):
+                if section == "New Contributors":
+                    target = contributors
+                else:
+                    target = entries.setdefault(category, [])
+                if line not in target:
+                    target.append(line)
+    order = [c for c in categories if c in entries] + [c for c in entries if c not in categories]
+    out = ["## What's Changed"]
+    for category in order:
+        if category:
+            out.append(f"### {category}")
+        out += entries[category]
+    if contributors:
+        out += ["", "## New Contributors", *contributors]
+    out += ["", "", f"**Full Changelog**: {full_changelog}"]
+    return "\n".join(out)
+
+
+def generated_notes(repo: str, tag: str, previous: Optional[str]) -> str:
     args = ["gh", "api", f"repos/{repo}/releases/generate-notes", "-f", f"tag_name={tag}"]
     if previous:
         args += ["-f", f"previous_tag_name={previous}"]
+    return json.loads(run(*args))["body"].strip()
+
+
+def generated_changes(repo: str, tag: str, previous: Optional[str]) -> str:
+    tags = run("git", "tag", "--list", "v*", "--merged", tag, "--sort=creatordate").splitlines()
+    ranges = changelog_ranges(tag, previous, tags)
     try:
-        return json.loads(run(*args))["body"].strip()
+        bodies = [generated_notes(repo, t, p) for t, p in ranges]
     except (subprocess.CalledProcessError, FileNotFoundError, KeyError) as e:
         print(f"warning: generated notes unavailable ({e})", file=sys.stderr)
         return "_The change list could not be generated; see the commit history._"
+    if len(bodies) == 1:
+        return bodies[0]
+    return merge_changes(bodies, changelog_categories(), f"https://github.com/{repo}/commits/{tag}")
 
 
 def read_wheel(path: pathlib.Path) -> Tuple[dict, Dict[str, List[str]]]:
