@@ -94,6 +94,73 @@ def test_cuda_targets(release_notes, architectures, expected):
     assert release_notes.cuda_targets(architectures) == expected
 
 
+@pytest.mark.parametrize(
+    "tag, previous, tags, expected",
+    [
+        # A later final release and any pre-release: one range from `previous`.
+        ("v0.2.0", "v0.1.0", ["v0.1.0", "v0.2.0rc1", "v0.2.0"], [("v0.2.0", "v0.1.0")]),
+        ("v0.1.0rc2", "v0.1.0rc1", ["v0.1.0rc1", "v0.1.0rc2"], [("v0.1.0rc2", "v0.1.0rc1")]),
+        # The first release of all: GitHub starts at the first commit.
+        ("v0.1.0rc1", None, ["v0.1.0rc1"], [("v0.1.0rc1", None)]),
+        # The first final release: one range per pre-release, so the list does
+        # not start at the last pre-release.
+        (
+            "v0.1.0",
+            None,
+            ["v0.1.0rc1", "v0.1.0rc2", "v0.1.0"],
+            [("v0.1.0rc1", None), ("v0.1.0rc2", "v0.1.0rc1"), ("v0.1.0", "v0.1.0rc2")],
+        ),
+    ],
+)
+def test_changelog_ranges(release_notes, tag, previous, tags, expected):
+    assert release_notes.changelog_ranges(tag, previous, tags) == expected
+
+
+def test_merge_changes(release_notes):
+    first = "\n".join([
+        "<!-- Release notes generated using configuration in .github/release.yml at v0.1.0rc1 -->",
+        "",
+        "## What's Changed",
+        "### Documentation",
+        "* docs by @a in #2",
+        "### Features",
+        "* feature one by @a in #1",
+        "",
+        "## New Contributors",
+        "* @a made their first contribution in #1",
+        "",
+        "**Full Changelog**: https://example.invalid/commits/v0.1.0rc1",
+    ])
+    second = "\n".join([
+        "## What's Changed",
+        "### Fixes",
+        "* fix by @b in #3",
+        "### Features",
+        "* feature two by @a in #4",
+        "",
+        "**Full Changelog**: https://example.invalid/compare/v0.1.0rc1...v0.1.0",
+    ])
+    categories = release_notes.changelog_categories()
+    assert categories[:3] == ["Breaking changes", "Features", "Fixes"]
+    merged = release_notes.merge_changes([first, second, ""], categories, "https://example.invalid/commits/v0.1.0")
+    assert merged == "\n".join([
+        "## What's Changed",
+        "### Features",
+        "* feature one by @a in #1",
+        "* feature two by @a in #4",
+        "### Fixes",
+        "* fix by @b in #3",
+        "### Documentation",
+        "* docs by @a in #2",
+        "",
+        "## New Contributors",
+        "* @a made their first contribution in #1",
+        "",
+        "",
+        "**Full Changelog**: https://example.invalid/commits/v0.1.0",
+    ])
+
+
 def test_prerelease_pattern(release_notes):
     assert release_notes.PRERELEASE.search("v0.1.0rc1")
     assert release_notes.PRERELEASE.search("v0.2.0a2")

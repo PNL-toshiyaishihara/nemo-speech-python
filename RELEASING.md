@@ -102,7 +102,10 @@ the tag of a published release; release a new patch version instead.
 `scripts/release_notes.py` writes the notes from the built wheels (their
 `nemo_speech/_build_info.json`) and git:
 
-- the generated change list since the previous release;
+- the generated change list since the previous release (for a final
+  release, the previous final release; the first final release lists
+  everything, combined from the ranges between its pre-releases, because
+  GitHub would otherwise start at the last pre-release);
 - the vendored sources (NeMo-Speech.cpp, llama.cpp, SentencePiece) with their
   commits, and a compare link for NeMo-Speech.cpp against the previous
   release's pin;
