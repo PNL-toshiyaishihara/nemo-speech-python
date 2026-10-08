@@ -1,8 +1,9 @@
-# CUDA smoke build: one architecture (sm_86) per CUDA release, Linux and
-# Windows, built, repaired and (Linux) tested against the driver stub. Builds
-# only when a change can affect the native build; Python-only changes cannot
-# break it because the bindings use ctypes. The full multi-architecture build
-# runs in release.yml (tags) and on manual wheels.yml runs.
+# CUDA smoke build: one architecture (sm_86) per CUDA release and platform
+# (Linux x86_64 and Windows; Linux aarch64 with CUDA 13 only), built, repaired
+# and (Linux) tested against the driver stub. Builds only when a change can
+# affect the native build; Python-only changes cannot break it because the
+# bindings use ctypes. The full multi-architecture build runs in release.yml
+# (tags) and on manual wheels.yml runs.
 #
 # The workflow itself runs for every push to main and every PR, so that its
 # final `cuda-smoke` job can be a required check: it passes when the build
@@ -61,10 +62,15 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        cuda: ["12.8.1", "13.0.2"]
+        include:
+          - cuda: "12.8.1"
+            platforms: '["ubuntu-24.04", "windows-2022"]'
+          - cuda: "13.0.2"
+            platforms: '["ubuntu-24.04", "ubuntu-24.04-arm", "windows-2022"]'
     uses: ./.github/workflows/cuda.yml
     with:
       cuda: ${{ matrix.cuda }}
+      platforms: ${{ matrix.platforms }}
       archs: "86-real"
       upload: false
 

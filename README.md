@@ -22,9 +22,10 @@ speaker diarization, TTS (MagpieTTS) and NMT (Riva-Translate).
 | macOS arm64 | `macosx_13_0_arm64` | Metal | CI: cibuildwheel from the sdist, delocate, tests without models |
 | Windows x64, CUDA 12.8 / 13.0 | `win_amd64` | CUDA | CI: all release architectures built and repaired (12.8: 704 MB, about 90 minutes); not run on a GPU |
 | Linux x86_64, CUDA 12.8 / 13.0 | `manylinux_2_28_x86_64` | CUDA | CI: all release architectures built, repaired and tested against the driver stub (12.8: 732 MB, about 80 minutes); not run on a GPU |
+| Linux aarch64, CUDA 13.0 | `manylinux_2_28_aarch64` | CUDA | CI: all release architectures, plus Jetson Thor and GB10 (DGX Spark), built, repaired and tested against the driver stub (759 MB, about 70 minutes); not run on a GPU |
 
-CUDA wheels (Linux x86_64, Windows x64) build without a GPU and bundle
-cuBLAS; see [CUDA](#cuda). They have not been run on an NVIDIA GPU yet.
+CUDA wheels (Linux x86_64 and aarch64, Windows x64) build without a GPU and
+bundle cuBLAS; see [CUDA](#cuda). They have not been run on an NVIDIA GPU yet.
 Python 3.10 to 3.14 is supported and tested.
 
 ## Install
@@ -124,6 +125,9 @@ NEMO_SPEECH_VARIANT=cu128 CMAKE_ARGS="-DCMAKE_CUDA_ARCHITECTURES=86-real" \
   exactly that compute capability, so PTX for newer GPUs needs a plain
   architecture such as `90-virtual`. `build_info()` reports the list as built
   (`...;100a-real;120a-real;90-virtual`).
+- Linux aarch64 wheels add `110-real` and `121-real` for the Arm-only Jetson
+  Thor (11.0) and GB10 (12.1, DGX Spark). CUDA 12.8 cannot build either, and
+  both ship with CUDA 13 drivers, so aarch64 has only the CUDA 13.0 wheel.
 - The wheel is self-contained apart from the NVIDIA driver: the repair step
   bundles the CUDA runtime, cuBLAS and cuBLASLt (about 600 MB), which are
   NVIDIA redistributables under the CUDA Toolkit EULA (shipped in
@@ -285,8 +289,8 @@ auditwheel/delvewheel/delocate. Builds are tiered by cost:
 | Workflow | When | Builds |
 |---|---|---|
 | `wheels.yml` | every push to `main` and every PR | CPU wheels (Linux x86_64/aarch64, Windows x64, macOS arm64) and the Windows Vulkan wheel, each tested on Python 3.10 to 3.14 |
-| `cuda-smoke.yml` | every push to `main` and every PR; builds only when the change touches `vendor/`, `CMakeLists.txt`, `cmake/`, `patches/`, `licenses/`, `pyproject.toml`, the loader or the CUDA workflows | CUDA 12.8 and 13.0 wheels for one architecture (sm_86), Linux tested against the driver stub; nothing uploaded. Its final `cuda-smoke` job passes when the build passed or was not needed, so it can be a required check |
-| `wheels.yml` manual run | on demand | adds the full CUDA wheels; `target` picks `cuda`, `cuda-windows` or `cuda-linux`, `cuda` picks `12.8` or `13.0` |
+| `cuda-smoke.yml` | every push to `main` and every PR; builds only when the change touches `vendor/`, `CMakeLists.txt`, `cmake/`, `patches/`, `licenses/`, `pyproject.toml`, the loader or the CUDA workflows | CUDA wheels for one architecture (sm_86): 12.8 and 13.0 on Linux x86_64 and Windows, 13.0 on Linux aarch64; Linux tested against the driver stub; nothing uploaded. Its final `cuda-smoke` job passes when the build passed or was not needed, so it can be a required check |
+| `wheels.yml` manual run | on demand | adds the full CUDA wheels; `target` picks `cuda`, `cuda-windows`, `cuda-linux-x86_64` or `cuda-linux-aarch64` (CUDA 13.0 only), `cuda` picks `12.8` or `13.0` |
 | `release.yml` | tags `v*` | every variant, then a draft GitHub Release with notes and `SHA256SUMS` (see [RELEASING.md](RELEASING.md)) |
 
 Python-only changes cannot break the CUDA build (the bindings use ctypes),

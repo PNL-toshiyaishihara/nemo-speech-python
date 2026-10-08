@@ -13,7 +13,7 @@ on:
         description: Wheels to build
         type: choice
         default: all
-        options: [all, cuda, cuda-windows, cuda-linux]
+        options: [all, cuda, cuda-windows, cuda-linux-x86_64, cuda-linux-aarch64]
       cuda:
         description: CUDA releases for CUDA targets
         type: choice
@@ -43,16 +43,18 @@ jobs:
     uses: ./.github/workflows/vulkan.yml
 
   # Full CUDA wheels (several hours of nvcc); manual runs only. cuda-smoke.yml
-  # covers native changes with a single architecture. Keep the toolkit list
-  # in sync with release.yml. The architectures are cuda.yml's default.
+  # covers native changes with a single architecture. Keep the toolkit and
+  # platform lists in sync with release.yml. The architectures are cuda.yml's
+  # default. Linux aarch64 is CUDA 13 only, so cuda-linux-aarch64 builds 13.0
+  # unless 12.8 is asked for (which cuda.yml then refuses).
   cuda:
     needs: sdist
     if: github.event_name == 'workflow_dispatch'
     strategy:
       fail-fast: false
       matrix:
-        cuda: ${{ fromJSON((inputs.cuda == '12.8' && '["12.8.1"]') || (inputs.cuda == '13.0' && '["13.0.2"]') || '["12.8.1", "13.0.2"]') }}
+        cuda: ${{ fromJSON((inputs.cuda == '12.8' && '["12.8.1"]') || (inputs.cuda == '13.0' && '["13.0.2"]') || (inputs.target == 'cuda-linux-aarch64' && '["13.0.2"]') || '["12.8.1", "13.0.2"]') }}
     uses: ./.github/workflows/cuda.yml
     with:
       cuda: ${{ matrix.cuda }}
-      platforms: ${{ (inputs.target == 'cuda-windows' && '["windows-2022"]') || (inputs.target == 'cuda-linux' && '["ubuntu-24.04"]') || '["ubuntu-24.04", "windows-2022"]' }}
+      platforms: ${{ (inputs.target == 'cuda-windows' && '["windows-2022"]') || (inputs.target == 'cuda-linux-x86_64' && '["ubuntu-24.04"]') || (inputs.target == 'cuda-linux-aarch64' && '["ubuntu-24.04-arm"]') || (startsWith(matrix.cuda, '12.') && '["ubuntu-24.04", "windows-2022"]') || '["ubuntu-24.04", "ubuntu-24.04-arm", "windows-2022"]' }}
