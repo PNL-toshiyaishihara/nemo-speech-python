@@ -56,17 +56,22 @@ jobs:
     needs: sdist
     uses: ./.github/workflows/vulkan.yml
 
-  # Keep the toolkit list in sync with wheels.yml. The architectures are
-  # cuda.yml's default.
+  # Keep the toolkit and platform lists in sync with wheels.yml. The
+  # architectures are cuda.yml's default. Linux aarch64 is CUDA 13 only.
   cuda:
     needs: sdist
     strategy:
       fail-fast: false
       matrix:
-        cuda: ["12.8.1", "13.0.2"]
+        include:
+          - cuda: "12.8.1"
+            platforms: '["ubuntu-24.04", "windows-2022"]'
+          - cuda: "13.0.2"
+            platforms: '["ubuntu-24.04", "ubuntu-24.04-arm", "windows-2022"]'
     uses: ./.github/workflows/cuda.yml
     with:
       cuda: ${{ matrix.cuda }}
+      platforms: ${{ matrix.platforms }}
 
   publish:
     needs: [verify, sdist, cpu, vulkan, cuda]
@@ -97,6 +102,7 @@ jobs:
             '+cu128-py3-none-manylinux_*_x86_64.whl'
             '+cu128-py3-none-win_amd64.whl'
             '+cu130-py3-none-manylinux_*_x86_64.whl'
+            '+cu130-py3-none-manylinux_*_aarch64.whl'
             '+cu130-py3-none-win_amd64.whl'
           )
           version="${GITHUB_REF_NAME#v}"

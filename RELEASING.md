@@ -28,7 +28,7 @@ Python 3.10 to 3.14 (each is tested on all of them, except where noted).
 | CPU (Metal on macOS) | none | unset | Linux x86_64, Linux aarch64, Windows x64, macOS arm64 |
 | Vulkan | `+vulkan` | `vulkan` | Windows x64 |
 | CUDA 12.8 | `+cu128` | `cu128` | Linux x86_64, Windows x64 (not testable on CI runners) |
-| CUDA 13.0 | `+cu130` | `cu130` | Linux x86_64, Windows x64 (not testable on CI runners) |
+| CUDA 13.0 | `+cu130` | `cu130` | Linux x86_64, Linux aarch64, Windows x64 (not testable on CI runners) |
 
 The local version label keeps the file names apart. `NEMO_SPEECH_VARIANT`
 enables the backend and sets the label (`pyproject.toml` overrides). The build
@@ -36,7 +36,7 @@ refuses unknown values, a GPU backend without its variant, and CUDA toolkits
 that do not match the label. A new variant needs an override in
 `pyproject.toml` and an entry in `NSP_KNOWN_VARIANTS` in `CMakeLists.txt`.
 
-A release therefore has 11 assets: 9 wheels, the sdist and `SHA256SUMS`.
+A release therefore has 12 assets: 10 wheels, the sdist and `SHA256SUMS`.
 
 ## Branches, PRs and labels
 
@@ -79,7 +79,7 @@ A release therefore has 11 assets: 9 wheels, the sdist and `SHA256SUMS`.
    assets, `SHA256SUMS` and generated notes. Tags with `a`/`b`/`rc`/`dev`
    become pre-releases.
 4. **Review the draft**: the change list, the vendored-source table, that all
-   11 assets are there. Edit the text if needed, then publish it.
+   12 assets are there. Edit the text if needed, then publish it.
 5. **Next development version.** A PR setting `__version__` to the next
    `.dev0`, labelled `skip-changelog`: after `0.2.0`, `0.3.0.dev0`. After a
    pre-release, the next pre-release's `.dev0` (after `0.2.0rc1`,

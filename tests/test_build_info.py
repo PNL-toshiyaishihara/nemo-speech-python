@@ -84,6 +84,10 @@ def test_variant_names(release_notes):
             "75-real;80-real;86-real;89-real;90-real;100a-real;120a-real;90-virtual",
             "compute capability 7.5, 8.0, 8.6, 8.9, 9.0, 10.0, 12.0; newer GPUs through PTX (9.0+)",
         ),
+        (
+            "75-real;80-real;86-real;89-real;90-real;100a-real;110a-real;120a-real;121a-real;90-virtual",
+            "compute capability 7.5, 8.0, 8.6, 8.9, 9.0, 10.0, 11.0, 12.0, 12.1; newer GPUs through PTX (9.0+)",
+        ),
         ("86-real", "compute capability 8.6"),
         ("75-real;120a", "compute capability 7.5, 12.0"),
         ("90", "compute capability 9.0; newer GPUs through PTX (9.0+)"),
