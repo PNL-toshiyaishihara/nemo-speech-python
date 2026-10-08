@@ -22,7 +22,7 @@ speaker diarization, TTS (MagpieTTS) and NMT (Riva-Translate).
 | macOS arm64 | `macosx_13_0_arm64` | Metal | CI: cibuildwheel from the sdist, delocate, tests without models |
 | Windows x64, CUDA 12.8 / 13.0 | `win_amd64` | CUDA | CI: all release architectures built and repaired (12.8: 704 MB, about 90 minutes); not run on a GPU |
 | Linux x86_64, CUDA 12.8 / 13.0 | `manylinux_2_28_x86_64` | CUDA | CI: all release architectures built, repaired and tested against the driver stub (12.8: 732 MB, about 80 minutes); not run on a GPU |
-| Linux aarch64, CUDA 13.0 | `manylinux_2_28_aarch64` | CUDA | CI: all release architectures, plus Jetson Thor and GB10 (DGX Spark), built, repaired and tested against the driver stub; not run on a GPU |
+| Linux aarch64, CUDA 13.0 | `manylinux_2_28_aarch64` | CUDA | CI: all release architectures, plus Jetson Thor and GB10 (DGX Spark), built, repaired and tested against the driver stub (759 MB, about 70 minutes); not run on a GPU |
 
 CUDA wheels (Linux x86_64 and aarch64, Windows x64) build without a GPU and
 bundle cuBLAS; see [CUDA](#cuda). They have not been run on an NVIDIA GPU yet.
