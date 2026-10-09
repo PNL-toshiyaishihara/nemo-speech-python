@@ -267,7 +267,10 @@ length is latency.
   `-alderlake` (AVX-VNNI) and `-icelake` (AVX-512 VNNI) to, on Linux,
   `-sapphirerapids` (AMX), and load the best one for the CPU at run time.
   `NEMO_SPEECH_CPU_VARIANT=<name>` (for example `haswell`) selects one by name
-  if the CPU supports it, to compare variants or to avoid a faulty one.
+  if the CPU supports it, to compare variants or to avoid a faulty one. The
+  oldest usable CPU is set by NumPy rather than by this package: NumPy 2.4
+  and later need x86-64-v2 (SSE4.2 and POPCNT: Intel Nehalem, AMD Bulldozer
+  or newer), so older CPUs need `numpy<2.4`.
 - `NEMO_SPEECH_LIB_PATH=<dir>` loads the libraries from another directory, for
   example a local NeMo-Speech.cpp build.
 
