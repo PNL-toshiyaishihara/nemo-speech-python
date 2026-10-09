@@ -1,2 +1,4 @@
 # Applied after NeMo-Speech.cpp's own patches/series, in this order.
 llama-sampler-avoid-random-device-entropy.patch
+ggml-cpu-variants-proxy.patch
+ggml-cpu-msvc-check-avx512-vbmi.patch

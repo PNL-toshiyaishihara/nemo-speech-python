@@ -53,6 +53,7 @@ the vendored source commits; please include it in bug reports.
 | `CMakeLists.txt` | Superbuild: SentencePiece → NeMo-Speech.cpp → install into `nemo_speech/lib` |
 | `cmake/materialize_llama_cpp.cmake` | Applies upstream `patches/` to llama.cpp (see Known issues) |
 | `cmake/install_shared_libs.cmake` | Installs ELF/Mach-O libraries once under their SONAME (wheels have no symlinks) |
+| `cmake/install_cpu_variants.cmake` | Copies the per-CPU-generation CPU backends, which upstream does not install |
 | `cmake/project_include.cmake` | Compile settings injected into the external projects |
 | `patches/llama.cpp/` | This repository's llama.cpp patches, applied after upstream's series |
 | `nemo_speech/capi/` | Low-level ctypes mirror of the four C headers (C names unchanged) |
@@ -148,8 +149,9 @@ NEMO_SPEECH_VARIANT=cu128 CMAKE_ARGS="-DCMAKE_CUDA_ARCHITECTURES=86-real" \
 CI builds the CUDA wheels on tags (`release.yml`) and manual `wheels.yml` runs.
 
 Wheel defaults: ASR, diarization, TTS and NMT on; CLI and microphone capture
-off; `GGML_NATIVE=OFF` (AVX2/FMA/F16C/BMI2 baseline on x86-64, see Known
-issues); on macOS Metal on and OpenMP off; the Japanese and Mandarin TTS
+off; `GGML_NATIVE=OFF`, with the CPU backend built once per CPU generation
+on x86-64 (`GGML_CPU_ALL_VARIANTS`, see Runtime requirements); on macOS Metal
+on and OpenMP off; the Japanese and Mandarin TTS
 tokenizers on, with their data in `nemo_speech/data/` (see Known issues).
 
 ## Usage
@@ -260,6 +262,15 @@ length is latency.
 - Windows: nothing beyond the wheel; the MSVC/OpenMP runtime is bundled in
   `nemo_speech.libs` by delvewheel. Vulkan wheels need a GPU driver providing
   `vulkan-1.dll`.
+- x86-64 wheels (CPU, Vulkan and CUDA) carry ggml's CPU backend once per CPU
+  generation, from `ggml-cpu-x64` (plain x86-64) through `-haswell` (AVX2),
+  `-alderlake` (AVX-VNNI) and `-icelake` (AVX-512 VNNI) to, on Linux,
+  `-sapphirerapids` (AMX), and load the best one for the CPU at run time.
+  `NEMO_SPEECH_CPU_VARIANT=<name>` (for example `haswell`) selects one by name
+  if the CPU supports it, to compare variants or to avoid a faulty one. The
+  oldest usable CPU is set by NumPy rather than by this package: NumPy 2.4
+  and later need x86-64-v2 (SSE4.2 and POPCNT: Intel Nehalem, AMD Bulldozer
+  or newer), so older CPUs need `numpy<2.4`.
 - `NEMO_SPEECH_LIB_PATH=<dir>` loads the libraries from another directory, for
   example a local NeMo-Speech.cpp build.
 
@@ -362,14 +373,6 @@ and worked around here):
 
 This package:
 
-- **x86-64 CPUs need AVX2.** The x86-64 wheels (CPU, Vulkan and CUDA) build
-  ggml's CPU backend with AVX, AVX2, FMA, F16C and BMI2 (`GGML_NATIVE=OFF`
-  gives a portable baseline, not runtime dispatch). CPUs without them, such
-  as pre-Haswell Intel and some Pentium, Celeron and Atom models, crash with
-  an illegal-instruction error once a model runs. For such machines, build
-  from source with
-  `CMAKE_ARGS="-DGGML_AVX2=OFF -DGGML_FMA=OFF -DGGML_F16C=OFF -DGGML_BMI2=OFF"`
-  (untested).
 - **Other ggml builds in the same process.** The bundled ggml/llama.cpp
   libraries keep their usual names (`ggml.dll`, `libggml-base.so.0`,
   `llama.dll`, ...), and so does the CUDA runtime on Windows

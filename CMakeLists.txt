@@ -34,7 +34,8 @@ endforeach()
 
 # ---- Wheel defaults (override with -D / CMAKE_ARGS) ----
 # Only components with Python bindings are built. GGML_NATIVE=OFF keeps the CPU
-# backend portable (AVX2 baseline on x86-64) instead of tuning for the build host.
+# backend portable instead of tuning for the build host; on x86-64 it is built
+# per CPU generation (see below).
 # The Japanese/Mandarin TTS tokenizers need data files (OpenJTalk dictionary,
 # Mandarin G2P tables) that upstream finds through absolute build paths; the
 # package ships them and points upstream at them (see nemo_speech/_data.py).
@@ -49,6 +50,15 @@ set(NEMO_SPEECH_BUILD_MIC_CAPTURE OFF CACHE BOOL "Build microphone capture")
 set(NEMO_SPEECH_GGML_PATCHED      ON  CACHE BOOL "Apply upstream patches/ to ggml and llama.cpp")
 set(NEMO_SPEECH_CUBLAS_SHIM       OFF CACHE BOOL "Use upstream's drop-in cuBLAS shim (CUDA)")
 set(GGML_NATIVE                   OFF CACHE BOOL "ggml: tune for the build host CPU")
+if(CMAKE_SYSTEM_PROCESSOR MATCHES "^(x86_64|AMD64|amd64)$" AND NOT APPLE
+   AND NEMO_SPEECH_GGML_PATCHED AND NOT NEMO_SPEECH_LLAMA_CPP_SOURCE_DIR)
+    # One CPU backend per CPU generation (ggml-cpu-haswell, -alderlake, ...),
+    # chosen at run time, so newer CPUs get AVX-VNNI and AVX-512 without
+    # raising the baseline. patches/llama.cpp/ggml-cpu-variants-proxy.patch
+    # loads them through a linked ggml-cpu, since upstream links ggml-cpu.
+    set(GGML_CPU_ALL_VARIANTS     ON  CACHE BOOL "ggml: build all variants of the CPU backend")
+    set(GGML_CPU_VARIANTS_PROXY   ON  CACHE BOOL "ggml: load the CPU variants through a linked ggml-cpu")
+endif()
 if(APPLE)
     # Metal is available on every supported Mac. ggml's own thread pool
     # replaces OpenMP, which Apple clang lacks (a Homebrew libomp would pin
@@ -253,6 +263,20 @@ ExternalProject_Add(nsp_sentencepiece
     INSTALL_COMMAND "${CMAKE_COMMAND}" --install <BINARY_DIR> --config $<CONFIG>)
 
 # ---- NeMo-Speech.cpp ----
+# Upstream installs the ggml libraries it links but not the CPU variant
+# modules, whose own install rules go with ggml's EXCLUDE_FROM_ALL directory;
+# copy them into the prefix beside the libraries that load them.
+set(NSP_INSTALL_CPU_VARIANTS "")
+if(GGML_CPU_VARIANTS_PROXY)
+    if(WIN32)
+        set(_nsp_variant_args "-DNSP_PATTERN=ggml-cpu-*.dll" "-DNSP_DESTINATION=<INSTALL_DIR>/bin")
+    else()
+        set(_nsp_variant_args "-DNSP_PATTERN=libggml-cpu-*.so" "-DNSP_DESTINATION=<INSTALL_DIR>/lib")
+    endif()
+    set(NSP_INSTALL_CPU_VARIANTS
+        COMMAND "${CMAKE_COMMAND}" "-DNSP_SOURCE_DIR=<BINARY_DIR>/bin" "-DNSP_CONFIG=$<CONFIG>"
+                ${_nsp_variant_args} -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/install_cpu_variants.cmake")
+endif()
 ExternalProject_Add(nsp_nemo_speech
     SOURCE_DIR "${NSP_UPSTREAM_DIR}"
     BINARY_DIR "${CMAKE_BINARY_DIR}/ns"
@@ -275,6 +299,7 @@ ExternalProject_Add(nsp_nemo_speech
     # (e.g. a since-disabled cuBLAS shim) never reach the wheel.
     INSTALL_COMMAND "${CMAKE_COMMAND}" -E rm -rf <INSTALL_DIR>
             COMMAND "${CMAKE_COMMAND}" --install <BINARY_DIR> --config $<CONFIG>
+            ${NSP_INSTALL_CPU_VARIANTS}
     # Rebuild on every outer build so edits under vendor/ are picked up.
     BUILD_ALWAYS TRUE
     USES_TERMINAL_CONFIGURE TRUE

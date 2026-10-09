@@ -252,8 +252,9 @@ def notes(tag: str, dist: pathlib.Path, repo: str) -> str:
         "",
         f"Python: {python_versions(built[0][2])}. Every wheel is `py3-none`, so one file serves all of them.",
         "",
-        "The x86-64 wheels (Linux x86_64 and Windows x64, every variant) need a CPU with AVX2, "
-        "FMA, F16C and BMI2 (Intel Haswell, AMD Zen or newer).",
+        "The x86-64 wheels (Linux x86_64 and Windows x64, every variant) carry ggml's CPU backend "
+        "once per CPU generation and load the best one for the CPU at run time, from plain x86-64 "
+        "to AVX-VNNI and AVX-512.",
         "",
         "| Variant | Platform | Requirements | File |",
         "|---|---|---|---|",
