@@ -1,2 +1,3 @@
 # Applied after NeMo-Speech.cpp's own patches/series, in this order.
 llama-sampler-avoid-random-device-entropy.patch
+ggml-load-backends-from-library-dir.patch
