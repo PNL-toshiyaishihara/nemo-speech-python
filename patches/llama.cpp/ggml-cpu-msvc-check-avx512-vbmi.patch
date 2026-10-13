@@ -1,0 +1,24 @@
+From: nemo-speech-python
+Subject: ggml-cpu: check AVX512-VBMI in the score of MSVC variants
+
+With MSVC, the AVX512-VBMI variants (cannonlake, icelake) define only
+__AVX512VBMI__, not GGML_AVX512_VBMI, which the feature check of
+ggml_backend_score() tests. Their score then equals that of the variants
+without VBMI (skylakex, cascadelake), and the tie goes to the first file
+name: cannonlake on a Skylake-X, cascadelake on an Ice Lake. The code does
+not use VBMI on MSVC, so nothing crashes, but the selection and the
+reported features are wrong. Define GGML_AVX512_VBMI as GCC builds do.
+---
+diff --git a/ggml/src/ggml-cpu/CMakeLists.txt b/ggml/src/ggml-cpu/CMakeLists.txt
+index 1c7338e..a49ad05 100644
+--- a/ggml/src/ggml-cpu/CMakeLists.txt
++++ b/ggml/src/ggml-cpu/CMakeLists.txt
+@@ -260,7 +260,7 @@ function(ggml_add_cpu_backend_variant_impl tag_name)
+                 # Do it manually.
+                 list(APPEND ARCH_DEFINITIONS GGML_AVX512)
+                 if (GGML_AVX512_VBMI)
+-                    list(APPEND ARCH_DEFINITIONS __AVX512VBMI__)
++                    list(APPEND ARCH_DEFINITIONS __AVX512VBMI__ GGML_AVX512_VBMI)
+                     if (CMAKE_C_COMPILER_ID STREQUAL "Clang")
+                         list(APPEND ARCH_FLAGS -mavx512vbmi)
+                     endif()

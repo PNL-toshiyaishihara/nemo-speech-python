@@ -101,6 +101,9 @@ function(nsp_write_build_info out_file)
         string(JSON backends SET "${backends}" "${key}" "${flag}")
     endforeach()
     string(JSON info SET "${info}" backends "${backends}")
+    # The CPU backend is built per CPU generation and chosen at run time.
+    nsp_json_bool("${GGML_CPU_VARIANTS_PROXY}" cpu_variants)
+    string(JSON info SET "${info}" cpu_variants "${cpu_variants}")
 
     set(components "{}")
     foreach(component IN ITEMS ASR DIAR TTS NMT)
