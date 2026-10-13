@@ -1,0 +1,95 @@
+From: nemo-speech-python
+Subject: ggml: load backends from libggml's own directory, not the cwd
+
+ggml_backend_load_all() passes a null search path to ggml_backend_load_best(),
+which then scans the executable's directory and the current working directory
+for ggml-<backend>-*.{dll,so} and loads every match to query its score. Loading
+runs the library's initializer, so a ggml-named library planted in a victim's
+working directory is executed. NeMo-Speech.cpp's TTS reaches this through
+ggml_backend_load_all() (magpietts and nanocodec model loading).
+
+Resolve the directory of libggml itself (via dladdr / GetModuleHandleEx on the
+address of a function in this translation unit) and load backends only from
+there, where the bundled backends live. If the directory cannot be resolved,
+load no backend from any directory rather than fall back to the cwd, still
+honoring an explicitly set GGML_BACKEND_PATH.
+---
+diff --git a/ggml/src/ggml-backend-reg.cpp b/ggml/src/ggml-backend-reg.cpp
+index 1c18b82..e3b77e8 100644
+--- a/ggml/src/ggml-backend-reg.cpp
++++ b/ggml/src/ggml-backend-reg.cpp
+@@ -461,6 +461,50 @@ static fs::path get_executable_path() {
+ #endif
+ }
+ 
++// Directory of the shared library this code is part of (libggml), so that
++// backends are loaded from beside it rather than from the executable's
++// directory or the current working directory (nemo-speech-python: avoid loading
++// a ggml-named library planted in the working directory).
++static fs::path get_this_library_path() {
++#if defined(_WIN32)
++    HMODULE module = NULL;
++    if (!GetModuleHandleExW(
++            GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
++            (LPCWSTR) &get_this_library_path, &module)) {
++        return {};
++    }
++    std::vector<wchar_t> path(MAX_PATH);
++    while (true) {
++        DWORD len = GetModuleFileNameW(module, path.data(), (DWORD) path.size());
++        if (len == 0) {
++            return {};
++        }
++        if (len < path.size()) {
++            std::wstring base_path(path.data(), len);
++            auto last_slash = base_path.find_last_of('\\');
++            if (last_slash != std::string::npos) {
++                base_path = base_path.substr(0, last_slash);
++            }
++            return base_path + L"\\";
++        }
++        path.resize(path.size() * 2);
++    }
++#elif defined(__APPLE__) || defined(__linux__) || defined(__FreeBSD__)
++    Dl_info info;
++    if (dladdr((const void *) &get_this_library_path, &info) == 0 || info.dli_fname == nullptr) {
++        return {};
++    }
++    std::string base_path(info.dli_fname);
++    auto last_slash = base_path.find_last_of('/');
++    if (last_slash != std::string::npos) {
++        base_path = base_path.substr(0, last_slash);
++    }
++    return base_path + "/";
++#else
++    return {};
++#endif
++}
++
+ static fs::path backend_filename_prefix() {
+ #ifdef _WIN32
+     return fs::u8path("ggml-");
+@@ -572,7 +616,22 @@ static ggml_backend_reg_t ggml_backend_load_best(const char * name, bool silent,
+ }
+ 
+ void ggml_backend_load_all() {
+-    ggml_backend_load_all_from_path(nullptr);
++    // Load backends from the directory of libggml itself, not the executable's
++    // directory or the current working directory (which ggml_backend_load_best
++    // searches when the path is null). This avoids loading - and running the
++    // initializer of - a ggml-named library planted in the working directory.
++    const std::string lib_dir = path_str(get_this_library_path());
++    if (!lib_dir.empty()) {
++        ggml_backend_load_all_from_path(lib_dir.c_str());
++        return;
++    }
++    // libggml's own directory could not be resolved: load no backend from any
++    // directory (rather than fall back to the working directory), but still
++    // honor an explicitly set GGML_BACKEND_PATH.
++    const char * backend_path = std::getenv("GGML_BACKEND_PATH");
++    if (backend_path) {
++        ggml_backend_load(backend_path);
++    }
+ }
+ 
+ void ggml_backend_load_all_from_path(const char * dir_path) {
