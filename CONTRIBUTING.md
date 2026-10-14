@@ -13,10 +13,21 @@ How this project is built and changed. Releases and versioning are in
    runtime, cuBLAS and cuBLASLt (about 700 MB). The only host requirement is
    the GPU driver. Never ask users to install a toolkit or edit `PATH`.
 2. **Upstream stays untouched.** `vendor/NeMo-Speech.cpp` is a pinned
-   submodule that is neither modified nor patched from here, and this
-   project does not send changes upstream. Problems are solved inside this
-   repository: the CMake superbuild, the llama.cpp patch series in
-   `patches/llama.cpp/`, or the Python layer.
+   submodule that is never modified, and this project does not send changes
+   upstream. Problems are solved inside this repository: the CMake
+   superbuild, the llama.cpp patch series in `patches/llama.cpp/`, the
+   Python layer, or, when none of these can avoid a defect, the
+   NeMo-Speech.cpp patch series in `patches/NeMo-Speech.cpp/`. Such a patch
+   is applied at build time to copies of the files it touches, and only if:
+   - it works around a defect recorded in an `upstream` issue (principle 3),
+     which its header names;
+   - it leaves results, interfaces and file formats unchanged (performance
+     and build fixes), verified against an unpatched build;
+   - it is small and only modifies existing files;
+   - the build can still be made without the series.
+
+   Every submodule update reviews the series, and a patch goes once
+   upstream fixes its defect.
 3. **Record upstream defects as issues** labelled `upstream`: the symptom,
    a permalink to the upstream code, the workaround here, a possible upstream
    fix, and a checklist. Once a workaround is merged, also label the issue
@@ -42,7 +53,9 @@ How this project is built and changed. Releases and versioning are in
   based on it to `main`. Deleting the base branch closes those PRs instead of
   retargeting them.
 - Updating NeMo-Speech.cpp: one PR per update, preferably to an upstream
-  release tag, labelled `dependencies`.
+  release tag, labelled `dependencies`. Check that every patch in
+  `patches/llama.cpp/` and `patches/NeMo-Speech.cpp/` still applies and is
+  still needed.
 - Workflows pin every action to a full commit SHA, with its version in a
   comment (`uses: owner/action@<sha> # v1.2.3`); Dependabot keeps the pins
   current. Every workflow declares `permissions: contents: read`; a job that
