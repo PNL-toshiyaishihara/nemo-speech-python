@@ -5,8 +5,8 @@ RnntGreedyDecoder evaluates the joint for every remaining encoder frame in
 one graph and keeps the leading run of blanks. Each emitted token changes the
 predictor state and starts a new round over all remaining frames, so offline
 decoding costs tokens x frames, quadratic in the audio length. On the CPU this
-makes long offline recognition with RNNT models (nemotron-3.5) much slower
-than the encoder: 63 s for 80 s of audio, against 17.5 s for transcribe.cpp
+makes long offline recognition with RNNT models (nemotron-3.5) slow: 80 s of
+audio took 59 s on an i7-1355U, and 18 s with this patch
 (nemo-speech-python #56).
 
 Evaluate at most 16 frames per round, and move on to the next window under
