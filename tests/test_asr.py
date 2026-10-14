@@ -28,6 +28,15 @@ def test_transcribe_file(recognizer, jfk_wav):
     assert result.is_final
 
 
+def test_long_audio_keeps_every_repetition(recognizer, jfk_wav):
+    # About 44 s: offline RNNT decoding runs through many joint windows here
+    # (patches/NeMo-Speech.cpp/rnnt-greedy-decoder-bound-joint-window.patch),
+    # and none of the four phrases may be lost.
+    samples, rate = load_wav(jfk_wav)
+    result = recognizer.transcribe(np.tile(samples, 4), rate)
+    assert _normalized(result.text).count(JFK_PHRASE) == 4
+
+
 def test_word_timestamps(recognizer, jfk_wav):
     result = recognizer.transcribe_file(jfk_wav, word_timestamps=True)
     words = result.words

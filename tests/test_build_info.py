@@ -23,6 +23,15 @@ def test_build_info_describes_this_build():
         assert re.fullmatch(r"[0-9a-f]{40}", info["sources"][name]["commit"]), name
 
 
+def test_nemo_speech_patches_match_the_series():
+    applied = nemo_speech.build_info()["nemo_speech_patches"]
+    if applied is None:
+        pytest.skip("built with NSP_PATCH_NEMO_SPEECH=OFF")
+    series = REPO_ROOT / "patches" / "NeMo-Speech.cpp" / "series"
+    lines = (line.split("#", 1)[0].strip() for line in series.read_text(encoding="utf-8").splitlines())
+    assert applied == [line for line in lines if line]
+
+
 def test_variant_matches_backend():
     info = nemo_speech.build_info()
     variant = info["variant"]

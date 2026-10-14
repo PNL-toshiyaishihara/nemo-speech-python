@@ -54,8 +54,10 @@ the vendored source commits; please include it in bug reports.
 | `cmake/materialize_llama_cpp.cmake` | Applies upstream `patches/` to llama.cpp (see Known issues) |
 | `cmake/install_shared_libs.cmake` | Installs ELF/Mach-O libraries once under their SONAME (wheels have no symlinks) |
 | `cmake/install_cpu_variants.cmake` | Copies the per-CPU-generation CPU backends, which upstream does not install |
-| `cmake/project_include.cmake` | Compile settings injected into the external projects |
+| `cmake/patch_nemo_speech.cmake` | Patched copies of NeMo-Speech.cpp sources for `patches/NeMo-Speech.cpp/` |
+| `cmake/project_include.cmake` | Compile settings injected into the external projects; compiles the patched copies in place of upstream's files |
 | `patches/llama.cpp/` | This repository's llama.cpp patches, applied after upstream's series |
+| `patches/NeMo-Speech.cpp/` | Fixes to NeMo-Speech.cpp sources that keep results unchanged (CONTRIBUTING principle 2); `vendor/` is not modified |
 | `nemo_speech/capi/` | Low-level ctypes mirror of the four C headers (C names unchanged) |
 | `nemo_speech/{asr,diar,tts,nmt}.py` | High-level API |
 | `nemo_speech/models.py` | Model catalog and downloads, sharing the CLI's cache |
@@ -152,7 +154,9 @@ Wheel defaults: ASR, diarization, TTS and NMT on; CLI and microphone capture
 off; `GGML_NATIVE=OFF`, with the CPU backend built once per CPU generation
 on x86-64 (`GGML_CPU_ALL_VARIANTS`, see Runtime requirements); on macOS Metal
 on and OpenMP off; the Japanese and Mandarin TTS
-tokenizers on, with their data in `nemo_speech/data/` (see Known issues).
+tokenizers on, with their data in `nemo_speech/data/` (see Known issues);
+`patches/NeMo-Speech.cpp/` applied (`-DNSP_PATCH_NEMO_SPEECH=OFF` builds
+upstream's sources as they are).
 
 ## Usage
 
@@ -329,6 +333,12 @@ and worked around here):
   `file(WRITE)`, which writes CRLF on Windows; with `core.autocrlf=input` or
   `false` the patches then fail to apply. This build applies the series itself
   and passes the result as `NEMO_SPEECH_LLAMA_CPP_SOURCE_DIR`.
+- **Slow offline RNNT decoding on the CPU** (#56). Upstream's greedy RNNT
+  decoder evaluates the joint for every remaining frame after each emitted
+  token, so its cost grows with the square of the audio length: 80 s of audio
+  took 59 s with nemotron-3.5 F16 on an i7-1355U. A patch in
+  `patches/NeMo-Speech.cpp/` evaluates at most 16 frames at a time, with the
+  same output (18 s). TDT models (parakeet) are not affected.
 - **TTS cancellation status.** Returning `false` from the PCM callback is
   reported as `NEMO_SPEECH_TTS_ERROR_RUNTIME`, not `..._CANCELLED`, on the
   streaming codec path. The bindings treat any failure after a requested

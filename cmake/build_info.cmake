@@ -135,6 +135,18 @@ function(nsp_write_build_info out_file)
 
     nsp_json_bool("${NEMO_SPEECH_GGML_PATCHED}" patched)
     string(JSON info SET "${info}" llama_cpp_patched "${patched}")
+    # patches/NeMo-Speech.cpp entries applied to this build; null when the
+    # build turned the series off (NSP_PATCH_NEMO_SPEECH=OFF).
+    if(NSP_PATCH_NEMO_SPEECH)
+        set(nemo_patches "[]")
+        foreach(patch IN LISTS NSP_NEMO_SPEECH_PATCHES)
+            string(JSON index LENGTH "${nemo_patches}")
+            string(JSON nemo_patches SET "${nemo_patches}" ${index} "\"${patch}\"")
+        endforeach()
+    else()
+        set(nemo_patches "null")
+    endif()
+    string(JSON info SET "${info}" nemo_speech_patches "${nemo_patches}")
     string(JSON info SET "${info}" sources "${sources}")
     file(WRITE "${out_file}" "${info}\n")
 endfunction()
