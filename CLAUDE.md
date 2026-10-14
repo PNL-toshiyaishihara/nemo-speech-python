@@ -6,7 +6,9 @@ steps) before changing anything. The rules that are easiest to get wrong:
 
 - Never modify `vendor/` (submodules). Work around upstream problems in this
   repository and record them as `upstream` issues, adding `workaround-here`
-  once a workaround is merged; do not propose changes upstream.
+  once a workaround is merged; do not propose changes upstream. Patch
+  NeMo-Speech.cpp sources (`patches/NeMo-Speech.cpp/`) only under the
+  conditions of CONTRIBUTING principle 2.
 - Wheels must work on their own: bundle native libraries, depend only on
   Python wheels.
 - All changes go through branches and PRs into `main`; label every PR.
