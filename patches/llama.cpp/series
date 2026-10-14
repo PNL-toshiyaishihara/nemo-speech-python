@@ -3,3 +3,4 @@ llama-sampler-avoid-random-device-entropy.patch
 ggml-load-backends-from-library-dir.patch
 ggml-cpu-variants-proxy.patch
 ggml-cpu-msvc-check-avx512-vbmi.patch
+ggml-sched-grow-buffers-on-demand.patch
