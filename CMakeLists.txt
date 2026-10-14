@@ -198,6 +198,23 @@ if(NEMO_SPEECH_GGML_PATCHED AND NOT NEMO_SPEECH_LLAMA_CPP_SOURCE_DIR)
     endforeach()
 endif()
 
+# ---- Patched NeMo-Speech.cpp sources ----
+# patches/NeMo-Speech.cpp: fixes that leave results unchanged, applied to copies
+# of the files at build time (vendor/ stays untouched). OFF builds upstream's
+# sources as they are. See cmake/patch_nemo_speech.cmake.
+set(NSP_PATCH_NEMO_SPEECH ON CACHE BOOL "Apply patches/NeMo-Speech.cpp to NeMo-Speech.cpp sources")
+set(NSP_NEMO_SPEECH_PATCHES "")
+set(_nsp_source_overrides "")
+if(NSP_PATCH_NEMO_SPEECH)
+    include(cmake/patch_nemo_speech.cmake)
+    nsp_patch_nemo_speech_sources(
+        "${NSP_UPSTREAM_DIR}" "${CMAKE_CURRENT_SOURCE_DIR}/patches/NeMo-Speech.cpp"
+        "${CMAKE_BINARY_DIR}/nemo-speech-patched" _nsp_source_overrides NSP_NEMO_SPEECH_PATCHES)
+endif()
+# Always passed, so turning the option off also clears the inner cache entry.
+list(JOIN _nsp_source_overrides "|" _nsp_source_overrides)
+set(NSP_NEMO_SPEECH_ARGS "-DNSP_SOURCE_OVERRIDES=${_nsp_source_overrides}")
+
 # ---- Arguments shared by both external projects ----
 if(CMAKE_BUILD_TYPE)
     set(NSP_BUILD_TYPE "${CMAKE_BUILD_TYPE}")
@@ -287,6 +304,7 @@ ExternalProject_Add(nsp_nemo_speech
         ${NSP_COMMON_ARGS}
         ${NSP_FORWARD_ARGS}
         ${NSP_LLAMA_CPP_ARGS}
+        ${NSP_NEMO_SPEECH_ARGS}
         "-DCMAKE_INSTALL_PREFIX=<INSTALL_DIR>"
         -DCMAKE_INSTALL_LIBDIR=lib
         -DCMAKE_INSTALL_BINDIR=bin

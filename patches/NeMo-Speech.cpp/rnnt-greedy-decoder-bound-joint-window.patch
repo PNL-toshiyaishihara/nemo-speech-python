@@ -1,0 +1,50 @@
+From: nemo-speech-python
+Subject: asr: bound the RNNT greedy decoder's speculative joint window
+
+RnntGreedyDecoder evaluates the joint for every remaining encoder frame in
+one graph and keeps the leading run of blanks. Each emitted token changes the
+predictor state and starts a new round over all remaining frames, so offline
+decoding costs tokens x frames, quadratic in the audio length. On the CPU this
+makes long offline recognition with RNNT models (nemotron-3.5) much slower
+than the encoder: 63 s for 80 s of audio, against 17.5 s for transcribe.cpp
+(nemo-speech-python #56).
+
+Evaluate at most 16 frames per round, and move on to the next window under
+the same predictor state when a window is all blank. A frame's joint depends
+only on that frame and the predictor state, so the decoded tokens are
+unchanged; a round now costs a bounded amount of work.
+---
+diff --git a/src/asr/decoders/rnnt_greedy_decoder.cpp b/src/asr/decoders/rnnt_greedy_decoder.cpp
+index 8b36670..3a0f59a 100644
+--- a/src/asr/decoders/rnnt_greedy_decoder.cpp
++++ b/src/asr/decoders/rnnt_greedy_decoder.cpp
+@@ -242,8 +242,14 @@ RnntGreedyDecoder::step_impl(
+     token_ids_.resize(static_cast<size_t>(T));
+     int t = 0;
+     int symbols_at_frame = 0;
++    // nemo-speech-python: evaluate at most kJointWindow frames per round. A
++    // round otherwise covers every remaining frame, and a new round starts
++    // at each emitted token, so decoding cost grew with tokens x frames
++    // (quadratic in the audio length). Each frame's joint depends only on
++    // that frame and the predictor state, so the decisions are unchanged.
++    constexpr int kJointWindow = 16;
+     while (t < T) {
+-        const int remaining = T - t;
++        const int remaining = std::min(T - t, kJointWindow);
+         const float* boost_bias = nullptr;
+         if (bias_on_) {
+             // NeMo/riva semantics (rnnt_label_looping.py): blank vs non-blank is
+@@ -321,8 +327,11 @@ RnntGreedyDecoder::step_impl(
+             }
+         }
+         if (first_emit < 0) {
+-            // Every remaining frame is blank under this predictor state.
+-            break;
++            // Every frame of this window is blank under this predictor state:
++            // go on with the next window under the same state.
++            t += remaining;
++            symbols_at_frame = 0;
++            continue;
+         }
+ 
+         // A blank advances the encoder clock and ends any symbol run at the
