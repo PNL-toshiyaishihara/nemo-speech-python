@@ -39,6 +39,8 @@ NEMO_SPEECH_ASR_ERROR_INVALID_ARGUMENT = 1
 NEMO_SPEECH_ASR_ERROR_OUT_OF_MEMORY = 2
 NEMO_SPEECH_ASR_ERROR_RUNTIME = 3
 NEMO_SPEECH_ASR_ERROR_CANCELLED = 4
+NEMO_SPEECH_ASR_ERROR_RESOURCE_EXHAUSTED = 5  # retry later (e.g. the SALM queue is full)
+NEMO_SPEECH_ASR_ERROR_UNAVAILABLE = 6  # shutting down
 
 nemo_speech_asr_decoder_kind = c_int
 NEMO_SPEECH_ASR_DECODER_GREEDY = 0
@@ -143,6 +145,15 @@ class nemo_speech_asr_batching_config(SizedStructure):
     ]
 
 
+class nemo_speech_asr_salm_config(SizedStructure):
+    _fields_ = [
+        ("size", c_size_t),
+        ("encoder_path", c_char_p),  # NULL/"" = the encoder file the decoder names
+        ("max_sequences", c_int32),  # <= 0 = default
+        ("mtp_draft", c_int32),  # 0 disables MTP; < 0 = default
+    ]
+
+
 class nemo_speech_asr_recognizer_config(SizedStructure):
     _fields_ = [
         ("size", c_size_t),
@@ -155,6 +166,7 @@ class nemo_speech_asr_recognizer_config(SizedStructure):
         ("postproc", POINTER(nemo_speech_asr_postproc_config)),
         ("diar", POINTER(nemo_speech_asr_diar_config)),
         ("batching", POINTER(nemo_speech_asr_batching_config)),
+        ("salm", POINTER(nemo_speech_asr_salm_config)),  # NULL = not SALM
     ]
 
 
@@ -194,6 +206,12 @@ class nemo_speech_asr_recognition_options(SizedStructure):
 )
 def nemo_speech_asr_recognition_options_default() -> nemo_speech_asr_recognition_options:
     """Options with ``size`` set and the library defaults filled in."""
+    ...
+
+
+@ctypes_function("nemo_speech_asr_salm_config_default", [], nemo_speech_asr_salm_config)
+def nemo_speech_asr_salm_config_default() -> nemo_speech_asr_salm_config:
+    """SALM config with ``size`` set and the library defaults filled in."""
     ...
 
 

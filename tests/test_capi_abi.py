@@ -92,6 +92,8 @@ def test_functions_match_header(upstream_dir, header, module_name):
     [
         ("nemo_speech.capi.asr", "nemo_speech_asr_recognition_options_default",
          "nemo_speech_asr_recognition_options"),
+        ("nemo_speech.capi.asr", "nemo_speech_asr_salm_config_default",
+         "nemo_speech_asr_salm_config"),
         ("nemo_speech.capi.tts", "nemo_speech_tts_runtime_config_default",
          "nemo_speech_tts_runtime_config"),
         ("nemo_speech.capi.tts", "nemo_speech_tts_synthesis_options_default",
