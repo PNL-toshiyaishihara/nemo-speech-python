@@ -66,26 +66,32 @@ endfunction()
 # Writes the build description to `out_file`.
 function(nsp_write_build_info out_file)
     find_package(Git QUIET)
+    # A checkout wins over the file: a revisions.json left over from an
+    # earlier sdist build would otherwise outlive a submodule update.
+    set(recorded "{}")
     if(EXISTS "${CMAKE_SOURCE_DIR}/vendor/revisions.json")
-        file(READ "${CMAKE_SOURCE_DIR}/vendor/revisions.json" sources)
-    else()
-        set(sources "{}")
-        foreach(entry IN ITEMS
-                "NeMo-Speech.cpp|${NSP_UPSTREAM_DIR}"
-                "llama.cpp|${NSP_UPSTREAM_DIR}/llama.cpp"
-                "sentencepiece|${NSP_SENTENCEPIECE_DIR}")
-            string(REPLACE "|" ";" entry "${entry}")
-            list(GET entry 0 name)
-            list(GET entry 1 dir)
-            nsp_source_revision("${dir}" revision)
-            if(revision STREQUAL "{}")
+        file(READ "${CMAKE_SOURCE_DIR}/vendor/revisions.json" recorded)
+    endif()
+    set(sources "{}")
+    foreach(entry IN ITEMS
+            "NeMo-Speech.cpp|${NSP_UPSTREAM_DIR}"
+            "llama.cpp|${NSP_UPSTREAM_DIR}/llama.cpp"
+            "sentencepiece|${NSP_SENTENCEPIECE_DIR}")
+        string(REPLACE "|" ";" entry "${entry}")
+        list(GET entry 0 name)
+        list(GET entry 1 dir)
+        nsp_source_revision("${dir}" revision)
+        if(revision STREQUAL "{}")
+            string(JSON revision ERROR_VARIABLE missing GET "${recorded}" "${name}")
+            if(missing)
                 message(WARNING
                     "No revision for ${name}: ${dir} is not a git checkout and "
-                    "vendor/revisions.json is missing; build_info() will lack it")
+                    "vendor/revisions.json does not record it; build_info() will lack it")
+                set(revision "{}")
             endif()
-            string(JSON sources SET "${sources}" "${name}" "${revision}")
-        endforeach()
-    endif()
+        endif()
+        string(JSON sources SET "${sources}" "${name}" "${revision}")
+    endforeach()
 
     set(info "{}")
     string(JSON info SET "${info}" version "\"${SKBUILD_PROJECT_VERSION_FULL}\"")
